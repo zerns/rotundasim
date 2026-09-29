@@ -624,6 +624,9 @@
     let currentTileLayer = null;
     let vehicleAgents = [];
     let lastAnimTime = performance.now();
+    let legTipPoints = [];
+    let draggingLegIdx = null;
+    let rotundaSelected = false;
 
     function safeLoadLocalStorage() {
       try {
@@ -748,10 +751,93 @@
           appState.centerLng = e.latlng.lng;
           centerMarker.setLatLng(e.latlng);
           requestAnimationFrame(render);
+          return;
         }
+
+        const pt = map.latLngToContainerPoint(e.latlng);
+        rotundaSelected = isPointOnRotunda(pt.x, pt.y);
+        requestAnimationFrame(render);
       });
 
       map.on('move resize zoom', syncCanvasSizeAndRender);
+
+      bindLegDragHandlers();
+    }
+
+    function findNearbyLegTip(px, py) {
+      if (!rotundaSelected) return null;
+      for (const tip of legTipPoints) {
+        if (Math.hypot(tip.x - px, tip.y - py) <= 10) return tip.idx;
+      }
+      return null;
+    }
+
+    function updateLegLengthUI(idx) {
+      const leg = appState.legs[idx];
+      if (!leg) return;
+      const slider = document.getElementById(`slider-leg-length-${idx}`);
+      const label = document.getElementById(`val-leg-length-${idx}`);
+      if (slider) slider.value = leg.lengthMeters;
+      if (label) label.textContent = `${leg.lengthMeters} m`;
+    }
+
+    function bindLegDragHandlers() {
+      const container = map.getContainer();
+      let hoveringLegIdx = null;
+
+      function eventToContainerPoint(e) {
+        const rect = container.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+
+      function onWindowMouseMove(e) {
+        if (draggingLegIdx === null) return;
+        const pt = eventToContainerPoint(e);
+        const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
+        const mouseLatLng = map.containerPointToLatLng([pt.x, pt.y]);
+        const meters = map.distance(centerLatLng, mouseLatLng);
+        const clamped = Math.max(40, Math.min(250, Math.round(meters / 5) * 5));
+        appState.legs[draggingLegIdx].lengthMeters = clamped;
+        updateLegLengthUI(draggingLegIdx);
+        requestAnimationFrame(render);
+      }
+
+      function onWindowMouseUp() {
+        if (draggingLegIdx === null) return;
+        draggingLegIdx = null;
+        if (hoveringLegIdx === null) map.dragging.enable();
+        container.style.cursor = hoveringLegIdx === null ? '' : 'grab';
+        window.removeEventListener('mousemove', onWindowMouseMove);
+        window.removeEventListener('mouseup', onWindowMouseUp);
+        saveStateToLocalStorage();
+        requestAnimationFrame(render);
+      }
+
+      // Proactively disable map panning while hovering a handle, so Leaflet's
+      // own mousedown listener (registered before ours) never starts a pan.
+      container.addEventListener('mousemove', (e) => {
+        if (draggingLegIdx !== null) return;
+        const pt = eventToContainerPoint(e);
+        const idx = findNearbyLegTip(pt.x, pt.y);
+        if (idx !== hoveringLegIdx) {
+          hoveringLegIdx = idx;
+          if (idx === null) {
+            map.dragging.enable();
+            container.style.cursor = '';
+          } else {
+            map.dragging.disable();
+            container.style.cursor = 'grab';
+          }
+        }
+      });
+
+      container.addEventListener('mousedown', (e) => {
+        if (hoveringLegIdx === null) return;
+        draggingLegIdx = hoveringLegIdx;
+        container.style.cursor = 'ns-resize';
+        window.addEventListener('mousemove', onWindowMouseMove);
+        window.addEventListener('mouseup', onWindowMouseUp);
+      });
     }
 
     function initCanvas() {
@@ -775,6 +861,32 @@
       const offsetPoint = map.latLngToContainerPoint(offsetLatLng);
       const pxDistance = Math.hypot(centerPoint.x - offsetPoint.x, centerPoint.y - offsetPoint.y);
       return Math.max(pxDistance, 2);
+    }
+
+    function isPointOnRotunda(px, py) {
+      const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
+      const centerPx = map.latLngToContainerPoint(centerLatLng);
+      const outerPx = getPixelRadius(centerLatLng, appState.outerRadiusMeters);
+
+      if (Math.hypot(px - centerPx.x, py - centerPx.y) <= outerPx) return true;
+
+      for (const leg of appState.legs) {
+        const totalAngleDeg = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset) % 360;
+        const rad = (totalAngleDeg * Math.PI) / 180;
+        const legWidthPx = getPixelRadius(centerLatLng, leg.widthMeters);
+        const legLengthPx = getPixelRadius(centerLatLng, leg.lengthMeters || 120);
+
+        const dx = px - centerPx.x;
+        const dy = py - centerPx.y;
+        const localX = dx * Math.cos(rad) + dy * Math.sin(rad);
+        const localY = -dx * Math.sin(rad) + dy * Math.cos(rad);
+
+        if (localX >= -legWidthPx / 2 && localX <= legWidthPx / 2 && localY <= 0 && localY >= -legLengthPx) {
+          return true;
+        }
+      }
+
+      return false;
     }
 
     function bindUIControls() {
@@ -1574,12 +1686,19 @@
       const islandPx = getPixelRadius(centerLatLng, appState.islandRadiusMeters);
 
       // 1. Draw Approach Road Legs
-      appState.legs.forEach((leg) => {
+      legTipPoints = [];
+      appState.legs.forEach((leg, legIdx) => {
         const totalAngleDeg = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset) % 360;
         const rad = (totalAngleDeg * Math.PI) / 180;
-        
+
         const legWidthPx = getPixelRadius(centerLatLng, leg.widthMeters);
         const legLengthPx = getPixelRadius(centerLatLng, leg.lengthMeters || 120);
+
+        legTipPoints.push({
+          idx: legIdx,
+          x: centerPx.x + Math.sin(rad) * legLengthPx,
+          y: centerPx.y - Math.cos(rad) * legLengthPx
+        });
 
         ctx.save();
         ctx.translate(centerPx.x, centerPx.y);
@@ -1633,6 +1752,17 @@
           ctx.lineTo(entryOffset, yieldY);
           ctx.closePath();
           ctx.fill();
+        }
+
+        // Length Drag Handle (only when rotunda is selected)
+        if (rotundaSelected) {
+          ctx.beginPath();
+          ctx.arc(0, -legLengthPx, draggingLegIdx === legIdx ? 8 : 6, 0, Math.PI * 2);
+          ctx.fillStyle = draggingLegIdx === legIdx ? '#38bdf8' : 'rgba(56, 189, 248, 0.85)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.lineWidth = 1.5;
+          ctx.fill();
+          ctx.stroke();
         }
 
         ctx.restore();
