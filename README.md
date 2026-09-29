@@ -8,7 +8,7 @@ Precision geometric roundabout alignment & microscopic traffic simulator. Browse
 - **Rotunda geometry controls**: outer radius, central island radius, ring lane count (1-3), approach leg count (3-6, T/Y/Cross/Star/Hex), global rotation angle.
 - **Placement**: drag center marker, or "Click map to move" mode to reposition continuously.
 - **Driving standard**: toggle Right-Hand (RHT) / Left-Hand (LHT) traffic rules.
-- **Per-leg alignment**: per-leg angle offset, width, length, drag-to-resize leg length handles (shown when rotunda selected), flow mode (one-way / two-way), spawn weight, exit preference.
+- **Per-leg alignment**: per-leg angle offset, width, length, drag-to-resize leg length and width handles (shown when rotunda selected), global all-legs width slider (shown when rotunda selected), flow mode (one-way / two-way), spawn weight, exit preference.
 - **Guide lines** toggle for alignment overlay.
 - **Traffic flow tuning**: global vehicle spawn rate, target free-flow speed, per-leg inflow demand level.
 - **Rush hour scenario presets**: AM Rush, PM Rush, Arterial Corridor, Off-Peak Balanced — apply directional demand patterns across legs in one click.

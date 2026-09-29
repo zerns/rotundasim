@@ -137,7 +137,9 @@
     let vehicleAgents = [];
     let lastAnimTime = performance.now();
     let legTipPoints = [];
+    let widthHandlePoints = [];
     let draggingLegIdx = null;
+    let draggingWidthLegIdx = null;
     let rotundaSelected = false;
 
     function safeLoadLocalStorage() {
@@ -268,6 +270,7 @@
 
         const pt = map.latLngToContainerPoint(e.latlng);
         rotundaSelected = isPointOnRotunda(pt.x, pt.y);
+        updateGlobalLegWidthVisibility();
         requestAnimationFrame(render);
       });
 
@@ -276,10 +279,31 @@
       bindLegDragHandlers();
     }
 
+    function updateGlobalLegWidthVisibility() {
+      const block = document.getElementById('global-leg-width-block');
+      if (!block) return;
+      block.classList.toggle('hidden', !rotundaSelected);
+      if (rotundaSelected) {
+        const slider = document.getElementById('slider-global-leg-width');
+        const val = document.getElementById('val-global-leg-width');
+        const firstLeg = appState.legs[0];
+        if (slider && firstLeg) slider.value = firstLeg.widthMeters;
+        if (val && firstLeg) val.textContent = `${firstLeg.widthMeters} m`;
+      }
+    }
+
     function findNearbyLegTip(px, py) {
       if (!rotundaSelected) return null;
       for (const tip of legTipPoints) {
         if (Math.hypot(tip.x - px, tip.y - py) <= 10) return tip.idx;
+      }
+      return null;
+    }
+
+    function findNearbyWidthHandle(px, py) {
+      if (!rotundaSelected) return null;
+      for (const handle of widthHandlePoints) {
+        if (Math.hypot(handle.x - px, handle.y - py) <= 10) return handle.idx;
       }
       return null;
     }
@@ -293,9 +317,23 @@
       if (label) label.textContent = `${leg.lengthMeters} m`;
     }
 
+    function updateLegWidthUI(idx) {
+      const leg = appState.legs[idx];
+      if (!leg) return;
+      const slider = document.getElementById(`slider-leg-width-${idx}`);
+      const label = document.getElementById(`val-leg-width-${idx}`);
+      if (slider) slider.value = leg.widthMeters;
+      if (label) label.textContent = `${leg.widthMeters} m`;
+      const globalSlider = document.getElementById('slider-global-leg-width');
+      const globalLabel = document.getElementById('val-global-leg-width');
+      if (globalSlider) globalSlider.value = leg.widthMeters;
+      if (globalLabel) globalLabel.textContent = `${leg.widthMeters} m`;
+    }
+
     function bindLegDragHandlers() {
       const container = map.getContainer();
       let hoveringLegIdx = null;
+      let hoveringWidthLegIdx = null;
 
       function eventToContainerPoint(e) {
         const rect = container.getBoundingClientRect();
@@ -325,25 +363,70 @@
         requestAnimationFrame(render);
       }
 
+      function onWindowWidthMouseMove(e) {
+        if (draggingWidthLegIdx === null) return;
+        const leg = appState.legs[draggingWidthLegIdx];
+        if (!leg) return;
+        const pt = eventToContainerPoint(e);
+        const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
+        const centerPx = map.latLngToContainerPoint(centerLatLng);
+        const totalAngleDeg = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset) % 360;
+        const rad = (totalAngleDeg * Math.PI) / 180;
+        const dx = pt.x - centerPx.x;
+        const dy = pt.y - centerPx.y;
+        const localX = dx * Math.cos(rad) + dy * Math.sin(rad);
+        const pixelsPerMeter = getPixelRadius(centerLatLng, 1);
+        const meters = (Math.abs(localX) * 2) / pixelsPerMeter;
+        const clamped = Math.max(12, Math.min(50, Math.round(meters)));
+        leg.widthMeters = clamped;
+        updateLegWidthUI(draggingWidthLegIdx);
+        requestAnimationFrame(render);
+      }
+
+      function onWindowWidthMouseUp() {
+        if (draggingWidthLegIdx === null) return;
+        draggingWidthLegIdx = null;
+        if (hoveringWidthLegIdx === null) map.dragging.enable();
+        container.style.cursor = hoveringWidthLegIdx === null ? '' : 'ew-resize';
+        window.removeEventListener('mousemove', onWindowWidthMouseMove);
+        window.removeEventListener('mouseup', onWindowWidthMouseUp);
+        saveStateToLocalStorage();
+        requestAnimationFrame(render);
+      }
+
       // Proactively disable map panning while hovering a handle, so Leaflet's
       // own mousedown listener (registered before ours) never starts a pan.
       container.addEventListener('mousemove', (e) => {
-        if (draggingLegIdx !== null) return;
+        if (draggingLegIdx !== null || draggingWidthLegIdx !== null) return;
         const pt = eventToContainerPoint(e);
-        const idx = findNearbyLegTip(pt.x, pt.y);
+        const widthIdx = findNearbyWidthHandle(pt.x, pt.y);
+        const idx = widthIdx === null ? findNearbyLegTip(pt.x, pt.y) : null;
+        if (widthIdx !== hoveringWidthLegIdx) {
+          hoveringWidthLegIdx = widthIdx;
+        }
         if (idx !== hoveringLegIdx) {
           hoveringLegIdx = idx;
-          if (idx === null) {
-            map.dragging.enable();
-            container.style.cursor = '';
-          } else {
-            map.dragging.disable();
-            container.style.cursor = 'grab';
-          }
+        }
+        if (widthIdx !== null) {
+          map.dragging.disable();
+          container.style.cursor = 'ew-resize';
+        } else if (idx !== null) {
+          map.dragging.disable();
+          container.style.cursor = 'grab';
+        } else {
+          map.dragging.enable();
+          container.style.cursor = '';
         }
       });
 
       container.addEventListener('mousedown', (e) => {
+        if (hoveringWidthLegIdx !== null) {
+          draggingWidthLegIdx = hoveringWidthLegIdx;
+          container.style.cursor = 'ew-resize';
+          window.addEventListener('mousemove', onWindowWidthMouseMove);
+          window.addEventListener('mouseup', onWindowWidthMouseUp);
+          return;
+        }
         if (hoveringLegIdx === null) return;
         draggingLegIdx = hoveringLegIdx;
         container.style.cursor = 'ns-resize';
@@ -466,6 +549,23 @@
         sliderIsland.addEventListener('input', (e) => {
           appState.islandRadiusMeters = parseInt(e.target.value, 10);
           document.getElementById('val-island-radius').textContent = `${appState.islandRadiusMeters} m`;
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Global Leg Width Slider (all legs, only shown when rotunda selected)
+      const sliderGlobalLegWidth = document.getElementById('slider-global-leg-width');
+      if (sliderGlobalLegWidth) {
+        sliderGlobalLegWidth.addEventListener('input', (e) => {
+          const width = parseInt(e.target.value, 10);
+          document.getElementById('val-global-leg-width').textContent = `${width} m`;
+          appState.legs.forEach((leg, idx) => {
+            leg.widthMeters = width;
+            const perLegSlider = document.getElementById(`slider-leg-width-${idx}`);
+            const perLegVal = document.getElementById(`val-leg-width-${idx}`);
+            if (perLegSlider) perLegSlider.value = width;
+            if (perLegVal) perLegVal.textContent = `${width} m`;
+          });
           requestAnimationFrame(render);
         });
       }
@@ -1190,6 +1290,7 @@
 
       // 1. Draw Approach Road Legs
       legTipPoints = [];
+      widthHandlePoints = [];
       appState.legs.forEach((leg, legIdx) => {
         const totalAngleDeg = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset) % 360;
         const rad = (totalAngleDeg * Math.PI) / 180;
@@ -1201,6 +1302,17 @@
           idx: legIdx,
           x: centerPx.x + Math.sin(rad) * legLengthPx,
           y: centerPx.y - Math.cos(rad) * legLengthPx
+        });
+
+        widthHandlePoints.push({
+          idx: legIdx,
+          x: centerPx.x + (legWidthPx / 2) * Math.cos(rad) + (legLengthPx / 2) * Math.sin(rad),
+          y: centerPx.y + (legWidthPx / 2) * Math.sin(rad) - (legLengthPx / 2) * Math.cos(rad)
+        });
+        widthHandlePoints.push({
+          idx: legIdx,
+          x: centerPx.x - (legWidthPx / 2) * Math.cos(rad) + (legLengthPx / 2) * Math.sin(rad),
+          y: centerPx.y - (legWidthPx / 2) * Math.sin(rad) - (legLengthPx / 2) * Math.cos(rad)
         });
 
         ctx.save();
@@ -1266,6 +1378,18 @@
           ctx.lineWidth = 1.5;
           ctx.fill();
           ctx.stroke();
+
+          // Width Drag Handles (only when rotunda is selected)
+          const widthHandleY = -legLengthPx / 2;
+          [-legWidthPx / 2, legWidthPx / 2].forEach((hx) => {
+            ctx.beginPath();
+            ctx.arc(hx, widthHandleY, draggingWidthLegIdx === legIdx ? 8 : 6, 0, Math.PI * 2);
+            ctx.fillStyle = draggingWidthLegIdx === legIdx ? '#e879f9' : 'rgba(232, 121, 249, 0.85)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.lineWidth = 1.5;
+            ctx.fill();
+            ctx.stroke();
+          });
         }
 
         ctx.restore();
