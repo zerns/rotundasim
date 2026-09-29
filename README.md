@@ -4,7 +4,7 @@ Precision geometric roundabout alignment & microscopic traffic simulator. Browse
 
 ## Features
 
-- **GIS map base**: Leaflet map, location search, switchable tile layers (Carto Light, Esri Satellite, Carto Dark, OSM Standard).
+- **GIS map base**: Leaflet map, location search. Only Esri Satellite tile layer supported (Carto Light/Dark, OSM Standard buttons present but not supported).
 - **Rotunda geometry controls**: outer radius, central island radius, ring lane count (1-3), approach leg count (3-6, T/Y/Cross/Star/Hex), global rotation angle.
 - **Placement**: drag center marker, or "Click map to move" mode to reposition continuously.
 - **Driving standard**: toggle Right-Hand (RHT) / Left-Hand (LHT) traffic rules.
