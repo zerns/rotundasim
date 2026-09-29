@@ -3,627 +3,1932 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rotunda & Roundabout Traffic Simulator | projectkilaw.com</title>
-  
-  <!-- OWASP Compliance: Strict Fallback Content Security Policy -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; img-src 'self' blob: data: https://server.arcgisonline.com https://services.arcgisonline.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://nominatim.openstreetmap.org; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
-  <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <title>RotundaSim - Traffic & Roundabout Simulator</title>
 
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- External Stylesheets: Tailwind CSS, Leaflet, FontAwesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- External JavaScript Libraries: Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    :root {
-      --bg-dark: #0f172a;
-      --panel-bg: rgba(15, 23, 42, 0.92);
-      --border-color: rgba(255, 255, 255, 0.12);
-      --accent-color: #38bdf8;
-      --accent-hover: #0284c7;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      overflow: hidden;
+      background-color: #0f172a;
+    }
+    
+    /* Custom Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', sans-serif; background: var(--bg-dark); color: var(--text-main); overflow: hidden; height: 100vh; width: 100vw; }
-    
-    #app-container { display: flex; height: 100vh; width: 100vw; position: relative; }
-    #map-wrapper { flex: 1; height: 100%; position: relative; }
-    #map { height: 100%; width: 100%; z-index: 1; background: #111; }
-    
-    /* Overlay Canvas */
+    /* Canvas Map Overlay Layer */
     #rotunda-canvas {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      z-index: 2; pointer-events: none;
+      pointer-events: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 400;
     }
 
-    /* Floating Header */
-    header {
-      position: absolute; top: 16px; left: 16px; z-index: 10;
-      background: var(--panel-bg); backdrop-filter: blur(12px);
-      border: 1px solid var(--border-color); border-radius: 12px;
-      padding: 12px 20px; display: flex; align-items: center; gap: 16px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    }
-    header h1 { font-size: 1.1rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
-    header span.badge { background: rgba(56, 189, 248, 0.2); color: var(--accent-color); font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-
-    /* Control Sidebar */
-    sidebar {
-      width: 380px; height: 100%; background: var(--panel-bg);
-      backdrop-filter: blur(16px); border-left: 1px solid var(--border-color);
-      z-index: 10; display: flex; flex-direction: column; overflow: hidden;
-      box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+    .leaflet-container {
+      background-color: #0f172a !important;
     }
 
-    .nav-tabs { display: flex; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2); }
-    .nav-tab { flex: 1; padding: 12px 8px; text-align: center; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border: none; background: none; transition: all 0.2s; }
-    .nav-tab.active { color: var(--accent-color); border-bottom: 2px solid var(--accent-color); background: rgba(56, 189, 248, 0.05); }
-
-    .tab-content { flex: 1; overflow-y: auto; padding: 20px; display: none; }
-    .tab-content.active { display: block; }
-
-    .control-group { margin-bottom: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 14px; border-radius: 10px; }
-    .control-group h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 12px; }
-
-    .input-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; }
-    .input-row label { font-size: 0.82rem; color: #cbd5e1; font-weight: 500; }
-    .input-row .val { font-size: 0.82rem; font-weight: 600; color: var(--accent-color); min-width: 45px; text-align: right; }
-
-    input[type="range"] {
-      width: 100%; height: 5px; background: #334155; border-radius: 5px;
-      outline: none; -webkit-appearance: none; cursor: pointer;
+    /* Custom Pulsing Leaflet Marker Icon */
+    .center-marker-icon {
+      background: rgba(14, 165, 233, 0.9);
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 15px rgba(14, 165, 233, 0.8), 0 0 0 4px rgba(14, 165, 233, 0.3);
+      transition: transform 0.15s ease-out;
     }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
-      background: var(--accent-color); cursor: pointer; transition: transform 0.1s;
+    .center-marker-icon:hover {
+      transform: scale(1.2);
     }
-    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
-    select, input[type="text"] {
-      width: 100%; padding: 8px 12px; background: rgba(15, 23, 42, 0.8);
-      border: 1px solid var(--border-color); border-radius: 6px; color: #fff;
-      font-size: 0.85rem; outline: none; margin-top: 4px;
-    }
-    select:focus, input[type="text"]:focus { border-color: var(--accent-color); }
-
-    .btn {
-      width: 100%; padding: 10px; background: var(--accent-color); color: #0f172a;
-      font-weight: 600; font-size: 0.85rem; border: none; border-radius: 8px;
-      cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
-    }
-    .btn:hover { background: var(--accent-hover); color: #fff; }
-    .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
-    .btn-secondary:hover { background: rgba(255,255,255,0.2); }
-
-    .metric-card { background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px; }
-    .metric-val { font-size: 1.2rem; font-weight: 700; color: var(--accent-color); }
-    .metric-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; }
-
-    /* Map click state banner */
-    #placement-banner {
-      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-      background: #f59e0b; color: #0f172a; font-weight: 700; font-size: 0.85rem;
-      padding: 10px 20px; border-radius: 999px; z-index: 100; display: none;
-      box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
   </style>
 </head>
-<body>
+<body class="h-screen w-screen flex flex-col text-slate-100 select-none overflow-hidden">
 
-  <div id="app-container">
-    <header>
-      <h1>Rotunda Simulator</h1>
-      <span class="badge">Davao City</span>
-      <button class="btn btn-secondary" id="btn-save-default" style="padding:4px 10px; font-size:0.75rem;">Set Default Location</button>
-    </header>
-
-    <div id="placement-banner">CLICK ANYWHERE ON MAP TO PLACE ROTUNDA</div>
-
-    <div id="map-wrapper">
-      <div id="map"></div>
-      <canvas id="rotunda-canvas"></canvas>
+  <header class="h-14 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between px-4 z-50 shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="bg-sky-500/20 text-sky-400 p-2 rounded-lg border border-sky-500/30">
+        <i class="fa-solid fa-circle-notch fa-spin text-lg"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-base tracking-wide flex items-center gap-2">
+          RotundaSim 
+          <span class="text-xs bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/30 font-normal">GIS Traffic Modeler</span>
+        </h1>
+        <p class="text-xs text-slate-400 hidden sm:block">Precision Geometric Roundabout Alignment & Microscopic Traffic Simulator</p>
+      </div>
     </div>
 
-    <sidebar>
-      <div class="nav-tabs">
-        <button class="nav-tab active" data-tab="tab-geometry">Geometry</button>
-        <button class="nav-tab" data-tab="tab-legs">Legs</button>
-        <button class="nav-tab" data-tab="tab-sim">Traffic Sim</button>
-        <button class="nav-tab" data-tab="tab-analytics">Analytics</button>
+    <!-- Search & Navigation Controls -->
+    <div class="flex items-center space-x-2">
+      <div class="relative w-64 md:w-80 flex items-center">
+        <input id="location-search-input" type="text" placeholder="Search location (e.g. BGC Taguig, Manila)..." 
+               class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg pl-3 pr-20 py-2 focus:outline-none focus:border-sky-500 transition-colors">
+        <button id="search-btn" class="absolute right-1 px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs transition-colors">
+          Find Map
+        </button>
       </div>
 
-      <!-- TAB 1: GEOMETRY -->
-      <div class="tab-content active" id="tab-geometry">
-        <div class="control-group">
-          <h3>Location & Search</h3>
-          <input type="text" id="search-input" placeholder="Search Davao City street or place..." />
-          <button class="btn btn-secondary" id="btn-search" style="margin-top:8px;">Search Location</button>
-          <button class="btn btn-secondary" id="btn-toggle-place" style="margin-top:8px;">Click Map to Reposition</button>
+      <button id="set-default-loc-btn" class="hidden sm:flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg transition-colors">
+        <i class="fa-solid fa-bookmark text-sky-400"></i> Set Default
+      </button>
+
+      <button id="toggle-sim-mode-btn" class="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors shadow-lg shadow-sky-600/20">
+        <i class="fa-solid fa-pause" id="sim-btn-icon"></i> <span id="sim-btn-label">Pause Simulation</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="flex-1 flex relative overflow-hidden">
+
+    <aside class="w-80 md:w-96 bg-slate-900/95 border-r border-slate-800 flex flex-col z-20 shrink-0 shadow-2xl">
+      <!-- Tab Navigation -->
+      <div class="flex border-b border-slate-800 bg-slate-900">
+        <button id="tab-btn-geom" class="flex-1 py-3 text-xs font-semibold text-sky-400 border-b-2 border-sky-500 flex items-center justify-center gap-1.5 transition-colors">
+          <i class="fa-solid fa-shapes"></i> Geometry & Legs
+        </button>
+        <button id="tab-btn-flow" class="flex-1 py-3 text-xs font-semibold text-slate-400 border-b-2 border-transparent hover:text-slate-200 flex items-center justify-center gap-1.5 transition-colors">
+          <i class="fa-solid fa-car"></i> Traffic Flow
+        </button>
+        <button id="tab-btn-saved" class="flex-1 py-3 text-xs font-semibold text-slate-400 border-b-2 border-transparent hover:text-slate-200 flex items-center justify-center gap-1.5 transition-colors">
+          <i class="fa-solid fa-bookmark"></i> Saved Rotundas
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+
+        <!-- TAB 1: GEOMETRY & PER-LEG ALIGNMENT -->
+        <div id="tab-content-geom" class="space-y-4">
+          <!-- Rotunda Dimensions Card -->
+          <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-3">
+            <h3 class="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-circle-dot"></i> Global Dimensions
+            </h3>
+            
+            <!-- Outer Radius -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-slate-300">Outer Radius</span>
+                <span id="val-outer-radius" class="font-mono text-sky-400 font-semibold">35 m</span>
+              </div>
+              <input id="slider-outer-radius" type="range" min="15" max="80" value="35" class="w-full accent-sky-500 bg-slate-700 h-1.5 rounded-lg cursor-pointer">
+            </div>
+
+            <!-- Island Radius -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-slate-300">Central Island Radius</span>
+                <span id="val-island-radius" class="font-mono text-emerald-400 font-semibold">18 m</span>
+              </div>
+              <input id="slider-island-radius" type="range" min="5" max="50" value="18" class="w-full accent-emerald-500 bg-slate-700 h-1.5 rounded-lg cursor-pointer">
+            </div>
+
+            <!-- Circulating Lanes & Legs -->
+            <div class="grid grid-cols-2 gap-2">
+              <div class="space-y-1">
+                <label for="select-ring-lanes" class="text-[11px] text-slate-400 block font-medium">Ring Lanes</label>
+                <select id="select-ring-lanes" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500">
+                  <option value="1">1 Lane</option>
+                  <option value="2" selected>2 Lanes</option>
+                  <option value="3">3 Lanes</option>
+                </select>
+              </div>
+
+              <div class="space-y-1">
+                <label for="select-leg-count" class="text-[11px] text-slate-400 block font-medium">Approach Legs</label>
+                <select id="select-leg-count" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500">
+                  <option value="3">3 Legs (T / Y)</option>
+                  <option value="4" selected>4 Legs (Cross)</option>
+                  <option value="5">5 Legs (Star)</option>
+                  <option value="6">6 Legs (Hex)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Rotation Angle -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-slate-300">Global Rotation Angle</span>
+                <span id="val-global-angle" class="font-mono text-purple-400 font-semibold">0°</span>
+              </div>
+              <input id="slider-global-angle" type="range" min="-180" max="180" value="0" class="w-full accent-purple-500 bg-slate-700 h-1.5 rounded-lg cursor-pointer">
+            </div>
+
+            <!-- Driving Standard -->
+            <div class="space-y-1">
+              <label class="text-[11px] text-slate-400 block font-medium">Driving Rule Standard</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button id="btn-traffic-rht" class="py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-sky-600/30 border-sky-500 text-sky-300">
+                  <i class="fa-solid fa-right-long"></i> Right-Hand (RHT)
+                </button>
+                <button id="btn-traffic-lht" class="py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-slate-800 border-slate-700 text-slate-400">
+                  <i class="fa-solid fa-left-long"></i> Left-Hand (LHT)
+                </button>
+              </div>
+            </div>
+
+            <!-- Move Center & Guide Line Options -->
+            <div class="pt-2 border-t border-slate-700/60 space-y-2">
+              <button id="btn-toggle-click-move" class="w-full py-1.5 px-3 bg-slate-700/80 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors">
+                <i class="fa-solid fa-location-crosshairs text-sky-400"></i> <span id="click-move-btn-text">Enable Click to Move Center</span>
+              </button>
+
+              <div class="flex items-center justify-between text-xs text-slate-300 pt-1">
+                <span>Show Guide Lines</span>
+                <input type="checkbox" id="toggle-guide-lines" checked class="accent-sky-500 w-4 h-4 rounded cursor-pointer">
+              </div>
+            </div>
+          </div>
+
+          <!-- Per-Leg Custom Alignment Section -->
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-sliders text-sky-400"></i> Per-Leg Alignment Controls
+            </h3>
+            <div id="per-leg-controls-container" class="space-y-3">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
         </div>
 
-        <div class="control-group">
-          <h3>Rotunda Dimensions</h3>
-          <div class="input-row">
-            <label>Outer Radius (m)</label>
-            <span class="val" id="val-outer-radius">22</span>
-          </div>
-          <input type="range" id="slider-outer-radius" min="12" max="60" value="22" step="1" />
+        <!-- TAB 2: TRAFFIC FLOW & RULES -->
+        <div id="tab-content-flow" class="hidden space-y-4">
+          
+          <!-- Traffic Demand Parameters -->
+          <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-3">
+            <h3 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-gauge-high"></i> Global Flow Speed & Volume
+            </h3>
 
-          <div class="input-row" style="margin-top:12px;">
-            <label>Inner Island Radius (m)</label>
-            <span class="val" id="val-inner-radius">12</span>
-          </div>
-          <input type="range" id="slider-inner-radius" min="4" max="40" value="12" step="1" />
+            <!-- Spawn Rate -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-slate-300">Global Vehicle Spawn Rate</span>
+                <span id="val-spawn-rate" class="font-mono text-amber-400 font-semibold">45 / min</span>
+              </div>
+              <input id="slider-spawn-rate" type="range" min="10" max="150" step="5" value="45" class="w-full accent-amber-500 bg-slate-700 h-1.5 rounded-lg cursor-pointer">
+            </div>
 
-          <div class="input-row" style="margin-top:12px;">
-            <label>Rotunda Lanes</label>
-            <span class="val" id="val-lanes">2</span>
+            <!-- Max Speed -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-slate-300">Target Free-Flow Speed</span>
+                <span id="val-max-speed" class="font-mono text-emerald-400 font-semibold">35 km/h</span>
+              </div>
+              <input id="slider-max-speed" type="range" min="15" max="70" step="5" value="35" class="w-full accent-emerald-500 bg-slate-700 h-1.5 rounded-lg cursor-pointer">
+            </div>
           </div>
-          <input type="range" id="slider-lanes" min="1" max="4" value="2" step="1" />
 
-          <div class="input-row" style="margin-top:12px;">
-            <label>Global Rotation (°)</label>
-            <span class="val" id="val-rotation">0</span>
+          <!-- Rush Hour Scenario Presets -->
+          <div class="p-3 bg-slate-800/80 rounded-xl border border-sky-500/30 space-y-2.5">
+            <h3 class="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock-rotate-left"></i> Rush Hour Scenarios</span>
+              <span id="current-scenario-badge" class="text-[10px] bg-sky-500/20 text-sky-300 border border-sky-500/30 px-2 py-0.5 rounded-full font-normal">Balanced Off-Peak</span>
+            </h3>
+            <p class="text-[10px] text-slate-400">Apply directional peak-hour commuter traffic demand patterns across all legs.</p>
+            
+            <div class="grid grid-cols-2 gap-2 pt-1">
+              <button id="scenario-btn-am" class="p-2 rounded-lg border text-left bg-slate-800 hover:bg-slate-700/80 border-slate-700 transition-colors">
+                <div class="text-xs font-bold text-amber-300 flex items-center gap-1">
+                  <i class="fa-solid fa-sun text-amber-400"></i> AM Rush Hour
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">Heavy residential inbound (Legs 1 & 2)</div>
+              </button>
+
+              <button id="scenario-btn-pm" class="p-2 rounded-lg border text-left bg-slate-800 hover:bg-slate-700/80 border-slate-700 transition-colors">
+                <div class="text-xs font-bold text-indigo-300 flex items-center gap-1">
+                  <i class="fa-solid fa-moon text-indigo-400"></i> PM Rush Hour
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">Heavy downtown outbound (Legs 3 & 4)</div>
+              </button>
+
+              <button id="scenario-btn-corridor" class="p-2 rounded-lg border text-left bg-slate-800 hover:bg-slate-700/80 border-slate-700 transition-colors">
+                <div class="text-xs font-bold text-rose-300 flex items-center gap-1">
+                  <i class="fa-solid fa-truck-fast text-rose-400"></i> Arterial Corridor
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">80% traffic through main highway axis</div>
+              </button>
+
+              <button id="scenario-btn-balanced" class="p-2 rounded-lg border text-left bg-sky-950/60 border-sky-500/50 text-sky-300 transition-colors">
+                <div class="text-xs font-bold text-sky-300 flex items-center gap-1">
+                  <i class="fa-solid fa-scale-balanced text-sky-400"></i> Off-Peak Balanced
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">Equal demand across all legs</div>
+              </button>
+            </div>
           </div>
-          <input type="range" id="slider-rotation" min="-180" max="180" value="0" step="1" />
         </div>
 
-        <div class="control-group">
-          <h3>Sidewalk & Crosswalks</h3>
-          <div class="input-row">
-            <label>Crosswalks Enabled</label>
-            <input type="checkbox" id="chk-crosswalks" checked />
+        <!-- TAB 3: SAVED ROTUNDAS -->
+        <div id="tab-content-saved" class="hidden space-y-4">
+          <!-- Save New Configuration Action Box -->
+          <div class="p-3.5 bg-slate-800/80 rounded-xl border border-sky-500/30 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i class="fa-solid fa-floppy-disk"></i> Save Current Rotunda
+              </h3>
+            </div>
+            <p class="text-[11px] text-slate-400">Capture current geometry, lane counts, per-leg alignments, traffic rules, and map position.</p>
+            <button id="btn-open-save-modal" class="w-full py-2 px-3 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-sky-600/20">
+              <i class="fa-solid fa-plus"></i> Save Current Setup
+            </button>
           </div>
-          <div class="input-row">
-            <label>Crosswalk Offset (m)</label>
-            <span class="val" id="val-crosswalk-dist">15</span>
+
+          <!-- Saved Rotundas Library -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <i class="fa-solid fa-folder-open text-sky-400"></i> Saved Library
+              </h3>
+              <span class="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">Most Recent First</span>
+            </div>
+
+            <div id="saved-rotundas-container" class="space-y-2.5">
+              <!-- Dynamically populated via JS -->
+            </div>
           </div>
-          <input type="range" id="slider-crosswalk-dist" min="5" max="35" value="15" step="1" />
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3 border-t border-slate-800 bg-slate-950/80 text-[11px] text-slate-400 flex items-center justify-between">
+        <span id="footer-tile-info">Map Provider: Esri Satellite</span>
+        <button id="reset-storage-btn" class="hover:text-red-400 transition-colors">Reset Storage</button>
+      </div>
+    </aside>
+
+    <main class="flex-1 relative overflow-hidden bg-slate-950">
+      <!-- Leaflet Map Container -->
+      <div id="map" class="w-full h-full"></div>
+
+      <!-- Canvas Overlay -->
+      <canvas id="rotunda-canvas"></canvas>
+
+      <!-- Map Layer Switcher Floating Menu -->
+      <div class="absolute top-4 right-72 z-30 flex items-center bg-slate-900/90 border border-slate-700/80 rounded-lg p-1 text-[11px] space-x-1 glass-panel">
+        <button id="layer-btn-light" class="px-2 py-1 rounded text-slate-300 hover:text-white transition-colors">Carto Light</button>
+        <button id="layer-btn-esri" class="px-2 py-1 rounded bg-sky-600 text-white font-medium transition-colors">Esri Satellite</button>
+        <button id="layer-btn-dark" class="px-2 py-1 rounded text-slate-300 hover:text-white transition-colors">Carto Dark</button>
+        <button id="layer-btn-osm" class="px-2 py-1 rounded text-slate-300 hover:text-white transition-colors">OSM Standard</button>
+      </div>
+
+      <!-- Click-to-Move Active Banner -->
+      <div id="click-move-banner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 glass-panel border-sky-500/50 text-sky-200 px-4 py-2 rounded-full shadow-xl z-30 flex items-center gap-2 text-xs font-medium animate-pulse">
+        <i class="fa-solid fa-crosshairs text-sky-400 text-sm"></i>
+        <span>Placement Mode Active: Click map to re-position rotunda center continuously</span>
+      </div>
+
+      <!-- Live Traffic Metrics HUD -->
+      <div class="absolute top-4 right-4 z-30 glass-panel rounded-xl p-3 border-slate-700/80 w-72 shadow-2xl space-y-2">
+        <div class="flex items-center justify-between border-b border-slate-700/60 pb-2">
+          <span class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+            <i class="fa-solid fa-chart-line text-sky-400"></i> Live Metrics HUD
+          </span>
+          <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono">Realtime SIM</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center pt-1">
+          <div class="bg-slate-800/60 p-2 rounded-lg border border-slate-700/40">
+            <div class="text-[10px] text-slate-400 uppercase">Total Throughput</div>
+            <div id="hud-throughput" class="text-lg font-extrabold text-sky-400 font-mono">0</div>
+          </div>
+          <div class="bg-slate-800/60 p-2 rounded-lg border border-slate-700/40">
+            <div class="text-[10px] text-slate-400 uppercase">Avg Queue Delay</div>
+            <div id="hud-delay" class="text-lg font-extrabold text-amber-400 font-mono">0.0 s</div>
+          </div>
+          <div class="bg-slate-800/60 p-2 rounded-lg border border-slate-700/40">
+            <div class="text-[10px] text-slate-400 uppercase">Total Active Cars</div>
+            <div id="hud-active-cars" class="text-lg font-extrabold text-emerald-400 font-mono">0</div>
+          </div>
+          <div class="bg-slate-800/60 p-2 rounded-lg border border-slate-700/40">
+            <div class="text-[10px] text-slate-400 uppercase">Active Pedestrians</div>
+            <div id="hud-active-peds" class="text-lg font-extrabold text-indigo-400 font-mono">0</div>
+          </div>
+        </div>
+
+        <div class="space-y-1 pt-1">
+          <div class="flex justify-between text-[10px] text-slate-400">
+            <span>Ring Capacity Utilization</span>
+            <span id="hud-capacity-percent" class="font-mono text-slate-200">0%</span>
+          </div>
+          <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+            <div id="hud-capacity-bar" class="bg-sky-500 h-full w-0 transition-all duration-300"></div>
+          </div>
         </div>
       </div>
 
-      <!-- TAB 2: LEGS -->
-      <div class="tab-content" id="tab-legs">
-        <div class="control-group">
-          <h3>Road Approach Count</h3>
-          <div class="input-row">
-            <label>Number of Legs</label>
-            <span class="val" id="val-legs-count">4</span>
-          </div>
-          <input type="range" id="slider-legs-count" min="3" max="6" value="4" step="1" />
-        </div>
-
-        <div id="legs-container">
-          <!-- Dynamic per-leg controls rendered via JS -->
-        </div>
+      <!-- Bottom Hint Bar -->
+      <div class="absolute bottom-3 left-1/2 -translate-x-1/2 glass-panel border-slate-700/60 text-slate-300 px-4 py-1.5 rounded-lg text-xs z-30 flex items-center gap-2">
+        <i class="fa-solid fa-hand-pointer text-sky-400"></i>
+        <span>Drag central blue marker OR enable "Click map to move" to position rotunda</span>
       </div>
-
-      <!-- TAB 3: TRAFFIC SIMULATION -->
-      <div class="tab-content" id="tab-sim">
-        <div class="control-group">
-          <h3>Simulation Parameters</h3>
-          <div class="input-row">
-            <label>Driving Standard</label>
-            <select id="sel-driving-side">
-              <option value="RHT">Right-Hand Drive (Counter-Clockwise)</option>
-              <option value="LHT">Left-Hand Drive (Clockwise)</option>
-            </select>
-          </div>
-          <div class="input-row" style="margin-top:12px;">
-            <label>Spawn Density (Cars/min)</label>
-            <span class="val" id="val-density">24</span>
-          </div>
-          <input type="range" id="slider-density" min="6" max="60" value="24" step="2" />
-
-          <div class="input-row" style="margin-top:12px;">
-            <label>Max Car Speed (km/h)</label>
-            <span class="val" id="val-speed">30</span>
-          </div>
-          <input type="range" id="slider-speed" min="15" max="60" value="30" step="5" />
-        </div>
-
-        <button class="btn" id="btn-toggle-sim">Pause Simulation</button>
-        <button class="btn btn-secondary" id="btn-reset-sim" style="margin-top:8px;">Reset Traffic</button>
-      </div>
-
-      <!-- TAB 4: ANALYTICS -->
-      <div class="tab-content" id="tab-analytics">
-        <div class="metric-card">
-          <div class="metric-val" id="metric-throughput">0</div>
-          <div class="metric-label">Vehicles Processed</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-val" id="metric-active-cars">0</div>
-          <div class="metric-label">Active Cars in Network</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-val" id="metric-avg-delay">0.0s</div>
-          <div class="metric-label">Avg Rotunda Delay</div>
-        </div>
-      </div>
-    </sidebar>
+    </main>
   </div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  
+  <!-- Save Rotunda Custom Name Modal -->
+  <div id="save-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[1000] hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-bookmark text-sky-400"></i> Save Rotunda Configuration
+        </h3>
+        <button id="btn-close-save-modal" class="text-slate-400 hover:text-slate-200 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      
+      <div class="space-y-2">
+        <label for="save-rotunda-name" class="text-xs text-slate-300 block font-medium">Rotunda Name / Location Title</label>
+        <input type="text" id="save-rotunda-name" placeholder="e.g. McKinley Rd Junction - Morning Peak" 
+               class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-sky-500">
+        <p id="save-modal-error" class="text-[11px] text-rose-400 hidden"></p>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="btn-cancel-save" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition-colors">
+          Cancel
+        </button>
+        <button id="btn-confirm-save" class="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs rounded-lg transition-colors">
+          Save Configuration
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    /**
-     * OWASP Security Sanitizer Utility
-     */
-    function sanitizeText(input) {
-      if (typeof input !== 'string') return '';
-      return input.replace(/[&<>"']/g, function (match) {
-        return {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;'
-        }[match];
-      });
-    }
+    const DEFAULT_LAT = 14.5472;
+    const DEFAULT_LNG = 121.0381;
 
-    /**
-     * Application State & Defaults
-     */
-    const DAVAO_DEFAULT = { lat: 7.0707, lng: 125.6087, zoom: 18 };
+    // Default pre-seeded rotundas list
+    const DEFAULT_PRESET_LIST = [
+      {
+        id: 'preset-bgc-mckinley',
+        name: 'McKinley Rd & 5th Ave Junction',
+        timestamp: 1700000000000,
+        isDefault: true,
+        state: {
+          centerLat: 14.5472,
+          centerLng: 121.0381,
+          zoom: 18,
+          outerRadiusMeters: 38,
+          islandRadiusMeters: 20,
+          ringLanes: 2,
+          legCount: 4,
+          globalAngleOffset: -12,
+          trafficStandard: 'RHT',
+          spawnRatePerMin: 50,
+          maxSpeedKmH: 35,
+          selectedScenario: 'balanced',
+          legs: [
+            { id: 0, baseAngle: 0, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.2, exitPreference: 'balanced' },
+            { id: 1, baseAngle: 90, angleOffset: 5, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
+            { id: 2, baseAngle: 180, angleOffset: -2, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.2, exitPreference: 'balanced' },
+            { id: 3, baseAngle: 270, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 0.8, exitPreference: 'balanced' }
+          ]
+        }
+      },
+      {
+        id: 'preset-matina-davao',
+        name: 'Matina Crossing Junction (Davao)',
+        timestamp: 1699000000000,
+        isDefault: true,
+        state: {
+          centerLat: 7.0707,
+          centerLng: 125.6087,
+          zoom: 18,
+          outerRadiusMeters: 35,
+          islandRadiusMeters: 18,
+          ringLanes: 2,
+          legCount: 4,
+          globalAngleOffset: 15,
+          trafficStandard: 'RHT',
+          spawnRatePerMin: 60,
+          maxSpeedKmH: 35,
+          selectedScenario: 'am-rush',
+          legs: [
+            { id: 0, baseAngle: 0, angleOffset: 0, widthMeters: 24, lengthMeters: 130, flowMode: 'two-way', spawnWeight: 2.5, exitPreference: 'opposite' },
+            { id: 1, baseAngle: 90, angleOffset: -8, widthMeters: 20, lengthMeters: 110, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
+            { id: 2, baseAngle: 180, angleOffset: 5, widthMeters: 24, lengthMeters: 130, flowMode: 'two-way', spawnWeight: 1.5, exitPreference: 'opposite' },
+            { id: 3, baseAngle: 270, angleOffset: 0, widthMeters: 18, lengthMeters: 100, flowMode: 'two-way', spawnWeight: 0.8, exitPreference: 'balanced' }
+          ]
+        }
+      },
+      {
+        id: 'preset-buhangin-davao',
+        name: 'Buhangin Flyover Roundabout (Davao)',
+        timestamp: 1698000000000,
+        isDefault: true,
+        state: {
+          centerLat: 7.0982,
+          centerLng: 125.6262,
+          zoom: 18,
+          outerRadiusMeters: 42,
+          islandRadiusMeters: 24,
+          ringLanes: 3,
+          legCount: 5,
+          globalAngleOffset: 0,
+          trafficStandard: 'RHT',
+          spawnRatePerMin: 55,
+          maxSpeedKmH: 40,
+          selectedScenario: 'balanced',
+          legs: [
+            { id: 0, baseAngle: 0, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
+            { id: 1, baseAngle: 72, angleOffset: 0, widthMeters: 20, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
+            { id: 2, baseAngle: 144, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
+            { id: 3, baseAngle: 216, angleOffset: 0, widthMeters: 20, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
+            { id: 4, baseAngle: 288, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' }
+          ]
+        }
+      }
+    ];
 
-    // Load state safely from localStorage
-    function loadSavedLocation() {
+    let savedRotundas = [];
+
+    function loadSavedRotundas() {
       try {
-        const raw = localStorage.getItem('rotunda_default_loc');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number' &&
-              isFinite(parsed.lat) && isFinite(parsed.lng) &&
-              parsed.lat >= -90 && parsed.lat <= 90 &&
-              parsed.lng >= -180 && parsed.lng <= 180) {
-            return { lat: parsed.lat, lng: parsed.lng, zoom: parsed.zoom || 18 };
-          }
+        const saved = localStorage.getItem('rotundasim_saved_list');
+        if (saved) {
+          savedRotundas = JSON.parse(saved);
+        } else {
+          savedRotundas = JSON.parse(JSON.stringify(DEFAULT_PRESET_LIST));
+          saveSavedRotundasToStorage();
         }
       } catch (e) {
-        localStorage.removeItem('rotunda_default_loc');
+        console.warn('Unable to load saved rotundas list:', e);
+        savedRotundas = JSON.parse(JSON.stringify(DEFAULT_PRESET_LIST));
       }
-      return DAVAO_DEFAULT;
     }
 
-    const savedLoc = loadSavedLocation();
+    function saveSavedRotundasToStorage() {
+      try {
+        localStorage.setItem('rotundasim_saved_list', JSON.stringify(savedRotundas));
+      } catch (e) {
+        console.warn('Unable to save rotundas list:', e);
+      }
+    }
 
-    const state = {
-      rotundaCenter: [savedLoc.lat, savedLoc.lng],
-      outerRadius: 22,
-      innerRadius: 12,
-      lanes: 2,
-      rotationAngle: 0,
-      crosswalksEnabled: true,
-      crosswalkDistance: 15,
-      legsCount: 4,
-      drivingSide: 'RHT', // RHT or LHT
-      spawnDensity: 24,
-      maxSpeed: 30,
-      isPlacingMode: false,
-      isSimRunning: true,
-      legs: [
-        { id: 1, angleOffset: 0, width: 20, mode: 'twoway' },
-        { id: 2, angleOffset: 90, width: 20, mode: 'twoway' },
-        { id: 3, angleOffset: 180, width: 20, mode: 'twoway' },
-        { id: 4, angleOffset: 270, width: 20, mode: 'twoway' }
-      ]
+    // Global application state object
+    const appState = {
+      centerLat: DEFAULT_LAT,
+      centerLng: DEFAULT_LNG,
+      zoom: 18,
+      clickToMove: false,
+      outerRadiusMeters: 35,
+      islandRadiusMeters: 18,
+      ringLanes: 2,
+      legCount: 4,
+      globalAngleOffset: 0,
+      trafficStandard: 'RHT',
+      spawnRatePerMin: 45,
+      maxSpeedKmH: 35,
+      guideLines: true,
+      showCrosswalks: true,
+      showYieldLines: true,
+      simulationRunning: true,
+      selectedScenario: 'balanced',
+      legs: []
     };
 
-    // Initialize Map with Esri World Imagery Satellite
-    const map = L.map('map', { zoomControl: false }).setView(state.rotundaCenter, savedLoc.zoom);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-      maxZoom: 19
-    }).addTo(map);
+    // Live statistics
+    const simStats = {
+      totalProcessed: 0,
+      activeCarsCount: 0
+    };
 
-    // Draggable Rotunda Center Marker
-    const rotundaMarker = L.marker(state.rotundaCenter, { draggable: true }).addTo(map);
+    let map = null;
+    let canvas = null;
+    let ctx = null;
+    let centerMarker = null;
+    let currentTileLayer = null;
+    let vehicleAgents = [];
+    let lastAnimTime = performance.now();
 
-    // Canvas Setup
-    const canvas = document.getElementById('rotunda-canvas');
-    const ctx = canvas.getContext('2d');
-
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    /**
-     * UI Event Controls & Tab Handling
-     */
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab).classList.add('active');
-      });
-    });
-
-    // Save Default Location to localStorage
-    document.getElementById('btn-save-default').addEventListener('click', () => {
-      const center = map.getCenter();
-      const locData = { lat: center.lat, lng: center.lng, zoom: map.getZoom() };
-      localStorage.setItem('rotunda_default_loc', JSON.stringify(locData));
-      alert('Default map view saved to Davao City coordinates!');
-    });
-
-    // Range Slider Synced Inputs
-    function bindSlider(id, targetStateKey, valId, callback) {
-      const slider = document.getElementById(id);
-      slider.addEventListener('input', (e) => {
-        const val = parseFloat(e.target.value);
-        state[targetStateKey] = val;
-        document.getElementById(valId).textContent = val;
-        if (callback) callback();
-      });
+    function safeLoadLocalStorage() {
+      try {
+        const saved = localStorage.getItem('rotundasim_config');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.assign(appState, parsed);
+        }
+      } catch (e) {
+        console.warn('Unable to load saved state:', e);
+      }
     }
 
-    bindSlider('slider-outer-radius', 'outerRadius', 'val-outer-radius');
-    bindSlider('slider-inner-radius', 'innerRadius', 'val-inner-radius');
-    bindSlider('slider-lanes', 'lanes', 'val-lanes');
-    bindSlider('slider-rotation', 'rotationAngle', 'val-rotation');
-    bindSlider('slider-crosswalk-dist', 'crosswalkDistance', 'val-crosswalk-dist');
-    bindSlider('slider-density', 'spawnDensity', 'val-density');
-    bindSlider('slider-speed', 'maxSpeed', 'val-speed');
-
-    document.getElementById('chk-crosswalks').addEventListener('change', (e) => {
-      state.crosswalksEnabled = e.target.checked;
-    });
-
-    document.getElementById('sel-driving-side').addEventListener('change', (e) => {
-      state.drivingSide = e.target.value;
-    });
-
-    // Legs Dynamic Count
-    document.getElementById('slider-legs-count').addEventListener('input', (e) => {
-      const count = parseInt(e.target.value, 10);
-      state.legsCount = count;
-      document.getElementById('val-legs-count').textContent = count;
-      
-      while (state.legs.length < count) {
-        const id = state.legs.length + 1;
-        const defaultAngle = (360 / count) * (id - 1);
-        state.legs.push({ id, angleOffset: defaultAngle, width: 20, mode: 'twoway' });
+    function saveStateToLocalStorage() {
+      try {
+        localStorage.setItem('rotundasim_config', JSON.stringify(appState));
+      } catch (e) {
+        console.warn('Unable to save state:', e);
       }
-      while (state.legs.length > count) {
-        state.legs.pop();
-      }
-      renderLegControls();
-    });
+    }
 
-    function renderLegControls() {
-      const container = document.getElementById('legs-container');
+    function sanitizeHTML(str) {
+      const temp = document.createElement('div');
+      temp.textContent = str;
+      return temp.innerHTML;
+    }
+
+    function initLegsState() {
+      appState.legs = [];
+      const baseAngles = {
+        3: [0, 120, 240],
+        4: [0, 90, 180, 270],
+        5: [0, 72, 144, 216, 288],
+        6: [0, 60, 120, 180, 240, 300]
+      }[appState.legCount] || [0, 90, 180, 270];
+
+      for (let i = 0; i < appState.legCount; i++) {
+        appState.legs.push({
+          id: i,
+          angleOffset: 0,
+          baseAngle: baseAngles[i],
+          widthMeters: 22,
+          lengthMeters: 120,
+          flowMode: 'two-way',
+          spawnWeight: 1.0,
+          exitPreference: 'balanced'
+        });
+      }
+    }
+
+    function initMap() {
+      map = L.map('map', {
+        center: [appState.centerLat, appState.centerLng],
+        zoom: appState.zoom,
+        zoomControl: false,
+        attributionControl: false
+      });
+
+      const tileSources = {
+        esri: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{y}/{x}{r}.png',
+        light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{y}/{x}{r}.png',
+        osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+      };
+
+      currentTileLayer = L.tileLayer(tileSources.esri, {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri'
+      }).addTo(map);
+
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+      const layerBtns = {
+        'layer-btn-esri': tileSources.esri,
+        'layer-btn-dark': tileSources.dark,
+        'layer-btn-light': tileSources.light,
+        'layer-btn-osm': tileSources.osm
+      };
+
+      Object.keys(layerBtns).forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+          Object.keys(layerBtns).forEach(id => {
+            const b = document.getElementById(id);
+            if (b) {
+              b.className = "px-2 py-1 rounded text-slate-300 hover:text-white transition-colors";
+            }
+          });
+          btn.className = "px-2 py-1 rounded bg-sky-600 text-white font-medium transition-colors";
+
+          if (currentTileLayer) map.removeLayer(currentTileLayer);
+          currentTileLayer = L.tileLayer(layerBtns[btnId], { maxZoom: 19 }).addTo(map);
+        });
+      });
+
+      const customIcon = L.divIcon({
+        className: 'center-marker-icon',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+
+      centerMarker = L.marker([appState.centerLat, appState.centerLng], {
+        draggable: true,
+        icon: customIcon
+      }).addTo(map);
+
+      centerMarker.on('drag', function(e) {
+        const latlng = e.target.getLatLng();
+        appState.centerLat = latlng.lat;
+        appState.centerLng = latlng.lng;
+        requestAnimationFrame(render);
+      });
+
+      map.on('click', function(e) {
+        if (appState.clickToMove) {
+          appState.centerLat = e.latlng.lat;
+          appState.centerLng = e.latlng.lng;
+          centerMarker.setLatLng(e.latlng);
+          requestAnimationFrame(render);
+        }
+      });
+
+      map.on('move resize zoom', syncCanvasSizeAndRender);
+    }
+
+    function initCanvas() {
+      canvas = document.getElementById('rotunda-canvas');
+      ctx = canvas.getContext('2d');
+      syncCanvasSizeAndRender();
+    }
+
+    function syncCanvasSizeAndRender() {
+      if (!canvas || !map) return;
+      const mapContainer = map.getContainer();
+      canvas.width = mapContainer.clientWidth;
+      canvas.height = mapContainer.clientHeight;
+      requestAnimationFrame(render);
+    }
+
+    function getPixelRadius(latLng, radiusMeters) {
+      const centerPoint = map.latLngToContainerPoint(latLng);
+      const latOffset = (radiusMeters / 6378137) * (180 / Math.PI);
+      const offsetLatLng = L.latLng(latLng.lat + latOffset, latLng.lng);
+      const offsetPoint = map.latLngToContainerPoint(offsetLatLng);
+      const pxDistance = Math.hypot(centerPoint.x - offsetPoint.x, centerPoint.y - offsetPoint.y);
+      return Math.max(pxDistance, 2);
+    }
+
+    function bindUIControls() {
+      // Tab Switching
+      const tabs = [
+        { btn: 'tab-btn-geom', content: 'tab-content-geom' },
+        { btn: 'tab-btn-flow', content: 'tab-content-flow' },
+        { btn: 'tab-btn-saved', content: 'tab-content-saved' }
+      ];
+
+      tabs.forEach(tab => {
+        const btnEl = document.getElementById(tab.btn);
+        if (!btnEl) return;
+        btnEl.addEventListener('click', () => {
+          tabs.forEach(t => {
+            const b = document.getElementById(t.btn);
+            const c = document.getElementById(t.content);
+            if (b && c) {
+              if (t.btn === tab.btn) {
+                b.classList.add('text-sky-400', 'border-sky-500');
+                b.classList.remove('text-slate-400', 'border-transparent');
+                c.classList.remove('hidden');
+              } else {
+                b.classList.remove('text-sky-400', 'border-sky-500');
+                b.classList.add('text-slate-400', 'border-transparent');
+                c.classList.add('hidden');
+              }
+            }
+          });
+        });
+      });
+
+      // Simulation Pause/Play Button
+      const toggleSimBtn = document.getElementById('toggle-sim-mode-btn');
+      const simBtnIcon = document.getElementById('sim-btn-icon');
+      const simBtnLabel = document.getElementById('sim-btn-label');
+      if (toggleSimBtn) {
+        toggleSimBtn.addEventListener('click', () => {
+          appState.simulationRunning = !appState.simulationRunning;
+          if (appState.simulationRunning) {
+            simBtnIcon.className = "fa-solid fa-pause";
+            simBtnLabel.textContent = "Pause Simulation";
+            toggleSimBtn.className = "flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors shadow-lg shadow-sky-600/20";
+          } else {
+            simBtnIcon.className = "fa-solid fa-play";
+            simBtnLabel.textContent = "Resume Simulation";
+            toggleSimBtn.className = "flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors shadow-lg shadow-amber-600/20";
+          }
+        });
+      }
+
+      // Outer Radius Slider
+      const sliderOuter = document.getElementById('slider-outer-radius');
+      if (sliderOuter) {
+        sliderOuter.addEventListener('input', (e) => {
+          appState.outerRadiusMeters = parseInt(e.target.value, 10);
+          document.getElementById('val-outer-radius').textContent = `${appState.outerRadiusMeters} m`;
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Island Radius Slider
+      const sliderIsland = document.getElementById('slider-island-radius');
+      if (sliderIsland) {
+        sliderIsland.addEventListener('input', (e) => {
+          appState.islandRadiusMeters = parseInt(e.target.value, 10);
+          document.getElementById('val-island-radius').textContent = `${appState.islandRadiusMeters} m`;
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Ring Lanes Dropdown
+      const selectRingLanes = document.getElementById('select-ring-lanes');
+      if (selectRingLanes) {
+        selectRingLanes.addEventListener('change', (e) => {
+          appState.ringLanes = parseInt(e.target.value, 10);
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Approach Legs Count Dropdown
+      const selectLegCount = document.getElementById('select-leg-count');
+      if (selectLegCount) {
+        selectLegCount.addEventListener('change', (e) => {
+          appState.legCount = parseInt(e.target.value, 10);
+          initLegsState();
+          vehicleAgents = [];
+          renderPerLegUIControls();
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Global Angle Offset Slider
+      const sliderAngle = document.getElementById('slider-global-angle');
+      if (sliderAngle) {
+        sliderAngle.addEventListener('input', (e) => {
+          appState.globalAngleOffset = parseInt(e.target.value, 10);
+          document.getElementById('val-global-angle').textContent = `${appState.globalAngleOffset}°`;
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Traffic Standard Buttons (RHT / LHT)
+      const btnRHT = document.getElementById('btn-traffic-rht');
+      const btnLHT = document.getElementById('btn-traffic-lht');
+      if (btnRHT && btnLHT) {
+        btnRHT.addEventListener('click', () => {
+          appState.trafficStandard = 'RHT';
+          btnRHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-sky-600/30 border-sky-500 text-sky-300";
+          btnLHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-slate-800 border-slate-700 text-slate-400";
+          vehicleAgents = [];
+          requestAnimationFrame(render);
+        });
+        btnLHT.addEventListener('click', () => {
+          appState.trafficStandard = 'LHT';
+          btnLHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-sky-600/30 border-sky-500 text-sky-300";
+          btnRHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-slate-800 border-slate-700 text-slate-400";
+          vehicleAgents = [];
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Enable Click-to-Move Toggle
+      const clickMoveBtn = document.getElementById('btn-toggle-click-move');
+      const clickMoveBanner = document.getElementById('click-move-banner');
+      const clickMoveBtnText = document.getElementById('click-move-btn-text');
+      if (clickMoveBtn) {
+        clickMoveBtn.addEventListener('click', () => {
+          appState.clickToMove = !appState.clickToMove;
+          if (appState.clickToMove) {
+            clickMoveBanner.classList.remove('hidden');
+            clickMoveBtn.className = "w-full py-1.5 px-3 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors shadow-lg shadow-sky-600/20";
+            if (clickMoveBtnText) clickMoveBtnText.textContent = "Placement Mode Active (Click Map)";
+          } else {
+            clickMoveBanner.classList.add('hidden');
+            clickMoveBtn.className = "w-full py-1.5 px-3 bg-slate-700/80 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors";
+            if (clickMoveBtnText) clickMoveBtnText.textContent = "Enable Click to Move Center";
+          }
+        });
+      }
+
+      // Display Toggles
+      const toggleGuides = document.getElementById('toggle-guide-lines');
+      if (toggleGuides) {
+        toggleGuides.addEventListener('change', (e) => {
+          appState.guideLines = e.target.checked;
+          requestAnimationFrame(render);
+        });
+      }
+
+      // Spawn Rate Slider
+      const sliderSpawn = document.getElementById('slider-spawn-rate');
+      if (sliderSpawn) {
+        sliderSpawn.addEventListener('input', (e) => {
+          appState.spawnRatePerMin = parseInt(e.target.value, 10);
+          document.getElementById('val-spawn-rate').textContent = `${appState.spawnRatePerMin} / min`;
+        });
+      }
+
+      // Max Speed Slider
+      const sliderSpeed = document.getElementById('slider-max-speed');
+      if (sliderSpeed) {
+        sliderSpeed.addEventListener('input', (e) => {
+          appState.maxSpeedKmH = parseInt(e.target.value, 10);
+          document.getElementById('val-max-speed').textContent = `${appState.maxSpeedKmH} km/h`;
+        });
+      }
+
+      // Rush Hour Scenarios
+      const scenarioAM = document.getElementById('scenario-btn-am');
+      const scenarioPM = document.getElementById('scenario-btn-pm');
+      const scenarioCorridor = document.getElementById('scenario-btn-corridor');
+      const scenarioBalanced = document.getElementById('scenario-btn-balanced');
+
+      if (scenarioAM) scenarioAM.addEventListener('click', () => applyRushHourScenario('am-rush'));
+      if (scenarioPM) scenarioPM.addEventListener('click', () => applyRushHourScenario('pm-rush'));
+      if (scenarioCorridor) scenarioCorridor.addEventListener('click', () => applyRushHourScenario('arterial'));
+      if (scenarioBalanced) scenarioBalanced.addEventListener('click', () => applyRushHourScenario('balanced'));
+
+      // Save Modal Trigger
+      const openSaveModalBtn = document.getElementById('btn-open-save-modal');
+      const closeSaveModalBtn = document.getElementById('btn-close-save-modal');
+      const cancelSaveBtn = document.getElementById('btn-cancel-save');
+      const confirmSaveBtn = document.getElementById('btn-confirm-save');
+      const saveModal = document.getElementById('save-modal');
+      const saveNameInput = document.getElementById('save-rotunda-name');
+      const saveErrorMsg = document.getElementById('save-modal-error');
+
+      function openModal() {
+        if (!saveModal || !saveNameInput) return;
+        saveNameInput.value = '';
+        if (saveErrorMsg) saveErrorMsg.classList.add('hidden');
+        saveModal.classList.remove('hidden');
+        setTimeout(() => saveNameInput.focus(), 50);
+      }
+
+      function closeModal() {
+        if (saveModal) saveModal.classList.add('hidden');
+      }
+
+      if (openSaveModalBtn) openSaveModalBtn.addEventListener('click', openModal);
+      if (closeSaveModalBtn) closeSaveModalBtn.addEventListener('click', closeModal);
+      if (cancelSaveBtn) cancelSaveBtn.addEventListener('click', closeModal);
+
+      if (saveNameInput) {
+        saveNameInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') confirmSave();
+          if (e.key === 'Escape') closeModal();
+        });
+      }
+
+      if (confirmSaveBtn) confirmSaveBtn.addEventListener('click', confirmSave);
+
+      function confirmSave() {
+        const name = saveNameInput.value.trim();
+        if (!name) {
+          if (saveErrorMsg) {
+            saveErrorMsg.textContent = "Please enter a valid rotunda name.";
+            saveErrorMsg.classList.remove('hidden');
+          }
+          return;
+        }
+
+        const newRotunda = {
+          id: 'rotunda_' + Date.now(),
+          name: name,
+          timestamp: Date.now(),
+          isDefault: false,
+          state: {
+            centerLat: appState.centerLat,
+            centerLng: appState.centerLng,
+            zoom: map ? map.getZoom() : appState.zoom,
+            outerRadiusMeters: appState.outerRadiusMeters,
+            islandRadiusMeters: appState.islandRadiusMeters,
+            ringLanes: appState.ringLanes,
+            legCount: appState.legCount,
+            globalAngleOffset: appState.globalAngleOffset,
+            trafficStandard: appState.trafficStandard,
+            spawnRatePerMin: appState.spawnRatePerMin,
+            maxSpeedKmH: appState.maxSpeedKmH,
+            selectedScenario: appState.selectedScenario,
+            legs: JSON.parse(JSON.stringify(appState.legs))
+          }
+        };
+
+        savedRotundas.unshift(newRotunda);
+        saveSavedRotundasToStorage();
+        renderSavedRotundas();
+        closeModal();
+      }
+
+      // Location Search
+      const searchBtn = document.getElementById('search-btn');
+      const searchInput = document.getElementById('location-search-input');
+      if (searchBtn && searchInput) {
+        const handleSearch = async () => {
+          const query = searchInput.value.trim();
+          if (!query) return;
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            if (data && data.length > 0) {
+              const lat = parseFloat(data[0].lat);
+              const lon = parseFloat(data[0].lon);
+              appState.centerLat = lat;
+              appState.centerLng = lon;
+              if (map) map.setView([lat, lon], 18);
+              if (centerMarker) centerMarker.setLatLng([lat, lon]);
+              requestAnimationFrame(render);
+            }
+          } catch (e) {
+            console.warn('Geocoding search failed:', e);
+          }
+        };
+
+        searchBtn.addEventListener('click', handleSearch);
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') handleSearch();
+        });
+      }
+
+      // Set Default Location
+      const setDefaultBtn = document.getElementById('set-default-loc-btn');
+      if (setDefaultBtn) {
+        setDefaultBtn.addEventListener('click', () => {
+          saveStateToLocalStorage();
+          alert('Current location set as default startup view!');
+        });
+      }
+
+      // Reset Storage
+      const resetStorageBtn = document.getElementById('reset-storage-btn');
+      if (resetStorageBtn) {
+        resetStorageBtn.addEventListener('click', () => {
+          localStorage.removeItem('rotundasim_config');
+          localStorage.removeItem('rotundasim_saved_list');
+          location.reload();
+        });
+      }
+    }
+
+    function renderSavedRotundas() {
+      const container = document.getElementById('saved-rotundas-container');
+      if (!container) return;
       container.innerHTML = '';
 
-      state.legs.forEach((leg, index) => {
-        const group = document.createElement('div');
-        group.className = 'control-group';
-        
-        const heading = document.createElement('h3');
-        heading.textContent = `Leg ${index + 1} Settings`;
-        group.appendChild(heading);
+      const sortedList = [...savedRotundas].sort((a, b) => b.timestamp - a.timestamp);
 
-        // Angle Slider
-        const angleRow = document.createElement('div');
-        angleRow.className = 'input-row';
-        angleRow.innerHTML = `<label>Angle Offset (°)</label><span class="val">${leg.angleOffset}°</span>`;
-        const angleSlider = document.createElement('input');
-        angleSlider.type = 'range';
-        angleSlider.min = '-180';
-        angleSlider.max = '180';
-        angleSlider.value = leg.angleOffset;
-        angleSlider.addEventListener('input', (e) => {
-          leg.angleOffset = parseFloat(e.target.value);
-          angleRow.querySelector('.val').textContent = leg.angleOffset + '°';
-        });
-
-        // Width Slider
-        const widthRow = document.createElement('div');
-        widthRow.className = 'input-row';
-        widthRow.style.marginTop = '10px';
-        widthRow.innerHTML = `<label>Leg Width (m)</label><span class="val">${leg.width}m</span>`;
-        const widthSlider = document.createElement('input');
-        widthSlider.type = 'range';
-        widthSlider.min = '12';
-        widthSlider.max = '50';
-        widthSlider.value = leg.width;
-        widthSlider.addEventListener('input', (e) => {
-          leg.width = parseFloat(e.target.value);
-          widthRow.querySelector('.val').textContent = leg.width + 'm';
-        });
-
-        // Mode Select
-        const modeRow = document.createElement('div');
-        modeRow.className = 'input-row';
-        modeRow.style.marginTop = '10px';
-        modeRow.innerHTML = `
-          <label>Direction Mode</label>
-          <select class="leg-mode-select">
-            <option value="twoway" ${leg.mode === 'twoway' ? 'selected' : ''}>Two-Way</option>
-            <option value="inbound" ${leg.mode === 'inbound' ? 'selected' : ''}>One-Way Inbound</option>
-            <option value="outbound" ${leg.mode === 'outbound' ? 'selected' : ''}>One-Way Outbound</option>
-          </select>
+      if (sortedList.length === 0) {
+        container.innerHTML = `
+          <div class="p-4 text-center bg-slate-800/40 border border-slate-800 rounded-xl text-slate-400 text-xs">
+            No saved rotundas found. Click "Save Current Setup" above to store one!
+          </div>
         `;
-        modeRow.querySelector('select').addEventListener('change', (e) => {
-          leg.mode = e.target.value;
-        });
+        return;
+      }
 
-        group.appendChild(angleRow);
-        group.appendChild(angleSlider);
-        group.appendChild(widthRow);
-        group.appendChild(widthSlider);
-        group.appendChild(modeRow);
-        container.appendChild(group);
+      sortedList.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = "p-3 bg-slate-800/80 hover:bg-slate-800 rounded-xl border border-slate-700/80 transition-all space-y-2 group shadow-sm";
+
+        const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleDateString(undefined, {
+          month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        }) : 'Preset';
+
+        const st = item.state || {};
+        const legInfo = st.legCount ? `${st.legCount} Legs` : '4 Legs';
+        const ringInfo = st.ringLanes ? `${st.ringLanes} Lane Ring` : '2 Lane Ring';
+        const radiusInfo = st.outerRadiusMeters ? `${st.outerRadiusMeters}m Outer` : '';
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <div class="space-y-0.5">
+              <div class="text-xs font-bold text-slate-100 group-hover:text-sky-300 transition-colors flex items-center gap-1.5">
+                ${item.isDefault ? '<i class="fa-solid fa-star text-amber-400 text-[10px]"></i>' : '<i class="fa-solid fa-bookmark text-sky-400 text-[10px]"></i>'}
+                ${sanitizeHTML(item.name)}
+              </div>
+              <div class="text-[10px] text-slate-400 flex items-center gap-2">
+                <span><i class="fa-solid fa-clock text-[9px] mr-0.5"></i> ${dateStr}</span>
+              </div>
+            </div>
+            ${!item.isDefault ? `
+              <button data-delete-id="${item.id}" class="btn-delete-rotunda text-slate-500 hover:text-rose-400 p-1 transition-colors" title="Delete Saved Setup">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+              </button>
+            ` : ''}
+          </div>
+
+          <div class="flex items-center gap-1.5 text-[10px] text-slate-300 pt-0.5">
+            <span class="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded font-mono">${legInfo}</span>
+            <span class="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded font-mono">${ringInfo}</span>
+            ${radiusInfo ? `<span class="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded font-mono">${radiusInfo}</span>` : ''}
+          </div>
+
+          <button data-load-id="${item.id}" class="btn-load-rotunda w-full py-1.5 bg-slate-900 hover:bg-sky-600/30 hover:border-sky-500/50 border border-slate-700 text-sky-300 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all">
+            <i class="fa-solid fa-location-dot"></i> Load into Simulator
+          </button>
+        `;
+
+        container.appendChild(card);
+      });
+
+      container.querySelectorAll('.btn-load-rotunda').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-load-id');
+          const target = savedRotundas.find(r => r.id === id);
+          if (target && target.state) {
+            applyRotundaConfig(target.state);
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-delete-rotunda').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.getAttribute('data-delete-id');
+          savedRotundas = savedRotundas.filter(r => r.id !== id);
+          saveSavedRotundasToStorage();
+          renderSavedRotundas();
+        });
       });
     }
-    renderLegControls();
 
-    // Map Click repositioning
-    const placementBanner = document.getElementById('placement-banner');
-    document.getElementById('btn-toggle-place').addEventListener('click', () => {
-      state.isPlacingMode = !state.isPlacingMode;
-      placementBanner.style.display = state.isPlacingMode ? 'block' : 'none';
-    });
+    function applyRotundaConfig(state) {
+      if (!state) return;
 
-    map.on('click', (e) => {
-      if (state.isPlacingMode) {
-        state.rotundaCenter = [e.latlng.lat, e.latlng.lng];
-        rotundaMarker.setLatLng(e.latlng);
-        state.isPlacingMode = false;
-        placementBanner.style.display = 'none';
+      appState.centerLat = state.centerLat ?? DEFAULT_LAT;
+      appState.centerLng = state.centerLng ?? DEFAULT_LNG;
+      appState.outerRadiusMeters = state.outerRadiusMeters ?? 35;
+      appState.islandRadiusMeters = state.islandRadiusMeters ?? 18;
+      appState.ringLanes = state.ringLanes ?? 2;
+      appState.legCount = state.legCount ?? 4;
+      appState.globalAngleOffset = state.globalAngleOffset ?? 0;
+      appState.trafficStandard = state.trafficStandard ?? 'RHT';
+      appState.spawnRatePerMin = state.spawnRatePerMin ?? 45;
+      appState.maxSpeedKmH = state.maxSpeedKmH ?? 35;
+      appState.selectedScenario = state.selectedScenario ?? 'balanced';
+
+      if (state.legs && Array.isArray(state.legs)) {
+        appState.legs = JSON.parse(JSON.stringify(state.legs));
+      } else {
+        initLegsState();
       }
-    });
 
-    rotundaMarker.on('drag', (e) => {
-      const latlng = e.target.getLatLng();
-      state.rotundaCenter = [latlng.lat, latlng.lng];
-    });
+      vehicleAgents = [];
 
-    // Location Search (OpenStreetMap Nominatim with strict XSS sanitization)
-    document.getElementById('btn-search').addEventListener('click', async () => {
-      const rawQuery = document.getElementById('search-input').value;
-      const query = sanitizeText(rawQuery);
-      if (!query) return;
-
-      try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-        const data = await response.json();
-        if (data && data.length > 0) {
-          const lat = parseFloat(data[0].lat);
-          const lon = parseFloat(data[0].lon);
-          map.setView([lat, lon], 18);
-          state.rotundaCenter = [lat, lon];
-          rotundaMarker.setLatLng([lat, lon]);
-        } else {
-          alert('Location not found in Davao City area.');
-        }
-      } catch (err) {
-        console.error('Geocoding request failed', err);
+      if (map) {
+        map.setView([appState.centerLat, appState.centerLng], state.zoom || 18);
       }
-    });
+      if (centerMarker) {
+        centerMarker.setLatLng([appState.centerLat, appState.centerLng]);
+      }
 
-    /**
-     * Microscopic Simulation Engine & Canvas Renderer
-     */
-    let vehicles = [];
-    let processedCount = 0;
-
-    document.getElementById('btn-toggle-sim').addEventListener('click', (e) => {
-      state.isSimRunning = !state.isSimRunning;
-      e.target.textContent = state.isSimRunning ? 'Pause Simulation' : 'Resume Simulation';
-    });
-
-    document.getElementById('btn-reset-sim').addEventListener('click', () => {
-      vehicles = [];
-      processedCount = 0;
-    });
-
-    function metersToPixels(meters) {
-      const center = map.getCenter();
-      const zoom = map.getZoom();
-      const metersPerPixel = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom);
-      return meters / metersPerPixel;
+      syncUIFromState();
+      renderPerLegUIControls();
+      saveStateToLocalStorage();
+      requestAnimationFrame(render);
     }
 
-    function renderOverlay() {
+    function syncUIFromState() {
+      const sliderOuter = document.getElementById('slider-outer-radius');
+      const valOuter = document.getElementById('val-outer-radius');
+      if (sliderOuter && valOuter) {
+        sliderOuter.value = appState.outerRadiusMeters;
+        valOuter.textContent = `${appState.outerRadiusMeters} m`;
+      }
+
+      const sliderIsland = document.getElementById('slider-island-radius');
+      const valIsland = document.getElementById('val-island-radius');
+      if (sliderIsland && valIsland) {
+        sliderIsland.value = appState.islandRadiusMeters;
+        valIsland.textContent = `${appState.islandRadiusMeters} m`;
+      }
+
+      const selectLanes = document.getElementById('select-ring-lanes');
+      if (selectLanes) selectLanes.value = appState.ringLanes;
+
+      const selectLegs = document.getElementById('select-leg-count');
+      if (selectLegs) selectLegs.value = appState.legCount;
+
+      const sliderAngle = document.getElementById('slider-global-angle');
+      const valAngle = document.getElementById('val-global-angle');
+      if (sliderAngle && valAngle) {
+        sliderAngle.value = appState.globalAngleOffset;
+        valAngle.textContent = `${appState.globalAngleOffset}°`;
+      }
+
+      const btnRHT = document.getElementById('btn-traffic-rht');
+      const btnLHT = document.getElementById('btn-traffic-lht');
+      if (btnRHT && btnLHT) {
+        if (appState.trafficStandard === 'RHT') {
+          btnRHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-sky-600/30 border-sky-500 text-sky-300";
+          btnLHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-slate-800 border-slate-700 text-slate-400";
+        } else {
+          btnLHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-sky-600/30 border-sky-500 text-sky-300";
+          btnRHT.className = "py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 bg-slate-800 border-slate-700 text-slate-400";
+        }
+      }
+
+      const sliderSpawn = document.getElementById('slider-spawn-rate');
+      const valSpawn = document.getElementById('val-spawn-rate');
+      if (sliderSpawn && valSpawn) {
+        sliderSpawn.value = appState.spawnRatePerMin;
+        valSpawn.textContent = `${appState.spawnRatePerMin} / min`;
+      }
+
+      const sliderMaxSpeed = document.getElementById('slider-max-speed');
+      const valMaxSpeed = document.getElementById('val-max-speed');
+      if (sliderMaxSpeed && valMaxSpeed) {
+        sliderMaxSpeed.value = appState.maxSpeedKmH;
+        valMaxSpeed.textContent = `${appState.maxSpeedKmH} km/h`;
+      }
+    }
+
+    function applyRushHourScenario(scenarioKey) {
+      appState.selectedScenario = scenarioKey;
+      const badge = document.getElementById('current-scenario-badge');
+
+      ['scenario-btn-am', 'scenario-btn-pm', 'scenario-btn-corridor', 'scenario-btn-balanced'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.className = "p-2 rounded-lg border text-left bg-slate-800 hover:bg-slate-700/80 border-slate-700 transition-colors";
+      });
+
+      if (scenarioKey === 'am-rush') {
+        if (badge) badge.textContent = 'AM Rush (Inbound Heavy)';
+        const activeBtn = document.getElementById('scenario-btn-am');
+        if (activeBtn) activeBtn.className = "p-2 rounded-lg border text-left bg-amber-950/60 border-amber-500/50 text-amber-300 transition-colors";
+        
+        appState.legs.forEach((leg, idx) => {
+          if (idx === 0 || idx === 1) {
+            leg.spawnWeight = 2.8;
+            leg.exitPreference = 'opposite';
+          } else {
+            leg.spawnWeight = 0.4;
+            leg.exitPreference = 'balanced';
+          }
+        });
+      } else if (scenarioKey === 'pm-rush') {
+        if (badge) badge.textContent = 'PM Rush (Outbound Heavy)';
+        const activeBtn = document.getElementById('scenario-btn-pm');
+        if (activeBtn) activeBtn.className = "p-2 rounded-lg border text-left bg-indigo-950/60 border-indigo-500/50 text-indigo-300 transition-colors";
+
+        appState.legs.forEach((leg, idx) => {
+          if (idx >= 2) {
+            leg.spawnWeight = 2.8;
+            leg.exitPreference = 'opposite';
+          } else {
+            leg.spawnWeight = 0.4;
+            leg.exitPreference = 'balanced';
+          }
+        });
+      } else if (scenarioKey === 'arterial') {
+        if (badge) badge.textContent = 'Arterial Corridor';
+        const activeBtn = document.getElementById('scenario-btn-corridor');
+        if (activeBtn) activeBtn.className = "p-2 rounded-lg border text-left bg-rose-950/60 border-rose-500/50 text-rose-300 transition-colors";
+
+        appState.legs.forEach((leg, idx) => {
+          if (idx === 0 || idx === 2) {
+            leg.spawnWeight = 3.0;
+            leg.exitPreference = 'opposite';
+          } else {
+            leg.spawnWeight = 0.3;
+            leg.exitPreference = 'turn-right';
+          }
+        });
+      } else {
+        if (badge) badge.textContent = 'Balanced Off-Peak';
+        const activeBtn = document.getElementById('scenario-btn-balanced');
+        if (activeBtn) activeBtn.className = "p-2 rounded-lg border text-left bg-sky-950/60 border-sky-500/50 text-sky-300 transition-colors";
+
+        appState.legs.forEach(leg => {
+          leg.spawnWeight = 1.0;
+          leg.exitPreference = 'balanced';
+        });
+      }
+
+      renderPerLegUIControls();
+      requestAnimationFrame(render);
+    }
+
+    function renderPerLegUIControls() {
+      const container = document.getElementById('per-leg-controls-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      appState.legs.forEach((leg, idx) => {
+        const legCard = document.createElement('div');
+        legCard.className = "p-2.5 bg-slate-800/80 rounded-lg border border-slate-700/70 space-y-2.5";
+
+        const currentAngle = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset + 360) % 360;
+        const spawnWeightVal = leg.spawnWeight !== undefined ? leg.spawnWeight : 1.0;
+
+        legCard.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-sky-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-road text-[11px]"></i> Leg ${idx + 1}
+            </span>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${spawnWeightVal > 1.8 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-700 text-slate-300'} font-mono">
+                ${spawnWeightVal > 1.8 ? 'PEAK FLOW' : `${Math.round(spawnWeightVal * 100)}% Demand`}
+              </span>
+              <span class="text-[11px] font-mono font-semibold text-slate-300">${Math.round(currentAngle)}°</span>
+            </div>
+          </div>
+
+          <div class="space-y-1 bg-slate-900/40 p-2 rounded-lg border border-slate-700/40">
+            <div class="flex justify-between text-[10px]">
+              <span class="text-amber-400 font-semibold flex items-center gap-1">
+                <i class="fa-solid fa-car-side text-[9px]"></i> Inflow Demand Level
+              </span>
+              <span id="val-leg-demand-${idx}" class="font-mono font-bold text-amber-300">${(spawnWeightVal * 100).toFixed(0)}%</span>
+            </div>
+            <input id="slider-leg-demand-${idx}" type="range" min="0.1" max="3.0" step="0.1" value="${spawnWeightVal}" class="w-full accent-amber-500 bg-slate-700 h-1.5 rounded-lg">
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-[10px] text-slate-400 block">Primary Destination Route</label>
+            <select id="select-leg-exit-${idx}" class="w-full bg-slate-900 border border-slate-700 rounded text-[11px] p-1 text-slate-200">
+              <option value="balanced" ${leg.exitPreference === 'balanced' ? 'selected' : ''}>Balanced / Equal Distribute</option>
+              <option value="opposite" ${leg.exitPreference === 'opposite' ? 'selected' : ''}>Through Highway (Opposite Leg)</option>
+              <option value="turn-right" ${leg.exitPreference === 'turn-right' ? 'selected' : ''}>Heavy Right Turn Bias</option>
+              <option value="turn-left" ${leg.exitPreference === 'turn-left' ? 'selected' : ''}>Heavy Left Turn Bias</option>
+            </select>
+          </div>
+
+          <div class="space-y-1">
+            <div class="flex justify-between text-[10px] text-slate-400">
+              <span>Angle Offset</span>
+              <span id="val-leg-angle-${idx}" class="font-mono text-sky-300">${leg.angleOffset}°</span>
+            </div>
+            <input id="slider-leg-angle-${idx}" type="range" min="-180" max="180" step="1" value="${leg.angleOffset}" class="w-full accent-sky-500 bg-slate-700 h-1 rounded-lg">
+          </div>
+
+          <div class="space-y-1">
+            <div class="flex justify-between text-[10px] text-slate-400">
+              <span>Road Width</span>
+              <span id="val-leg-width-${idx}" class="font-mono text-emerald-300">${leg.widthMeters} m</span>
+            </div>
+            <input id="slider-leg-width-${idx}" type="range" min="12" max="50" step="1" value="${leg.widthMeters}" class="w-full accent-emerald-500 bg-slate-700 h-1 rounded-lg">
+          </div>
+
+          <div class="space-y-1">
+            <div class="flex justify-between text-[10px] text-slate-400">
+              <span>Leg Length</span>
+              <span id="val-leg-length-${idx}" class="font-mono text-purple-300">${leg.lengthMeters || 120} m</span>
+            </div>
+            <input id="slider-leg-length-${idx}" type="range" min="40" max="250" step="5" value="${leg.lengthMeters || 120}" class="w-full accent-purple-500 bg-slate-700 h-1 rounded-lg">
+          </div>
+
+          <div class="grid grid-cols-3 gap-1 pt-1">
+            <button id="btn-flow-twoway-${idx}" class="py-1 text-[10px] font-semibold rounded border ${leg.flowMode === 'two-way' ? 'bg-sky-600/40 border-sky-500 text-sky-300' : 'bg-slate-900 border-slate-700 text-slate-400'}">Two-Way</button>
+            <button id="btn-flow-inbound-${idx}" class="py-1 text-[10px] font-semibold rounded border ${leg.flowMode === 'inbound-only' ? 'bg-emerald-600/40 border-emerald-500 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'}">Inbound</button>
+            <button id="btn-flow-outbound-${idx}" class="py-1 text-[10px] font-semibold rounded border ${leg.flowMode === 'outbound-only' ? 'bg-amber-600/40 border-amber-500 text-amber-300' : 'bg-slate-900 border-slate-700 text-slate-400'}">Outbound</button>
+          </div>
+        `;
+
+        container.appendChild(legCard);
+
+        document.getElementById(`slider-leg-demand-${idx}`).addEventListener('input', (e) => {
+          leg.spawnWeight = parseFloat(e.target.value);
+          document.getElementById(`val-leg-demand-${idx}`).textContent = `${(leg.spawnWeight * 100).toFixed(0)}%`;
+        });
+
+        document.getElementById(`select-leg-exit-${idx}`).addEventListener('change', (e) => {
+          leg.exitPreference = e.target.value;
+        });
+
+        document.getElementById(`slider-leg-angle-${idx}`).addEventListener('input', (e) => {
+          leg.angleOffset = parseInt(e.target.value, 10);
+          document.getElementById(`val-leg-angle-${idx}`).textContent = `${leg.angleOffset}°`;
+          requestAnimationFrame(render);
+        });
+
+        document.getElementById(`slider-leg-width-${idx}`).addEventListener('input', (e) => {
+          leg.widthMeters = parseInt(e.target.value, 10);
+          document.getElementById(`val-leg-width-${idx}`).textContent = `${leg.widthMeters} m`;
+          requestAnimationFrame(render);
+        });
+
+        document.getElementById(`slider-leg-length-${idx}`).addEventListener('input', (e) => {
+          leg.lengthMeters = parseInt(e.target.value, 10);
+          document.getElementById(`val-leg-length-${idx}`).textContent = `${leg.lengthMeters} m`;
+          requestAnimationFrame(render);
+        });
+
+        document.getElementById(`btn-flow-twoway-${idx}`).addEventListener('click', () => {
+          leg.flowMode = 'two-way';
+          clearVehiclesForLeg(leg.id);
+          renderPerLegUIControls();
+          requestAnimationFrame(render);
+        });
+        document.getElementById(`btn-flow-inbound-${idx}`).addEventListener('click', () => {
+          leg.flowMode = 'inbound-only';
+          clearVehiclesForLeg(leg.id);
+          renderPerLegUIControls();
+          requestAnimationFrame(render);
+        });
+        document.getElementById(`btn-flow-outbound-${idx}`).addEventListener('click', () => {
+          leg.flowMode = 'outbound-only';
+          clearVehiclesForLeg(leg.id);
+          renderPerLegUIControls();
+          requestAnimationFrame(render);
+        });
+      });
+    }
+
+    function clearVehiclesForLeg(legId) {
+      vehicleAgents = vehicleAgents.filter(car => car.entryLegId !== legId && car.exitLegId !== legId);
+    }
+
+    function render() {
+      if (!ctx || !canvas || !map) return;
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const centerLatLng = L.latLng(state.rotundaCenter[0], state.rotundaCenter[1]);
+      const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
       const centerPx = map.latLngToContainerPoint(centerLatLng);
 
-      const outerPx = metersToPixels(state.outerRadius);
-      const innerPx = metersToPixels(state.innerRadius);
+      const outerPx = getPixelRadius(centerLatLng, appState.outerRadiusMeters);
+      const islandPx = getPixelRadius(centerLatLng, appState.islandRadiusMeters);
 
-      ctx.save();
-      ctx.translate(centerPx.x, centerPx.y);
-
-      // Draw Approaches
-      state.legs.forEach(leg => {
-        const legAngleRad = ((leg.angleOffset + state.rotationAngle) * Math.PI) / 180;
-        const widthPx = metersToPixels(leg.width);
-        const legLengthPx = outerPx * 3;
+      // 1. Draw Approach Road Legs
+      appState.legs.forEach((leg) => {
+        const totalAngleDeg = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset) % 360;
+        const rad = (totalAngleDeg * Math.PI) / 180;
+        
+        const legWidthPx = getPixelRadius(centerLatLng, leg.widthMeters);
+        const legLengthPx = getPixelRadius(centerLatLng, leg.lengthMeters || 120);
 
         ctx.save();
-        ctx.rotate(legAngleRad);
+        ctx.translate(centerPx.x, centerPx.y);
+        ctx.rotate(rad);
 
-        // Road Surface
-        ctx.fillStyle = '#334155';
-        ctx.fillRect(-widthPx / 2, -legLengthPx, widthPx, legLengthPx);
+        // Asphalt Road
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+        ctx.fillRect(-legWidthPx / 2, -legLengthPx, legWidthPx, legLengthPx);
 
-        // Center line
-        ctx.strokeStyle = '#f59e0b';
+        // Curb Lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
         ctx.lineWidth = 2;
-        ctx.setLineDash([8, 8]);
         ctx.beginPath();
-        ctx.moveTo(0, -outerPx);
-        ctx.lineTo(0, -legLengthPx);
+        ctx.moveTo(-legWidthPx / 2, -legLengthPx);
+        ctx.lineTo(-legWidthPx / 2, -outerPx);
+        ctx.moveTo(legWidthPx / 2, -legLengthPx);
+        ctx.lineTo(legWidthPx / 2, -outerPx);
+        ctx.moveTo(-legWidthPx / 2, -legLengthPx);
+        ctx.lineTo(legWidthPx / 2, -legLengthPx);
         ctx.stroke();
 
-        // Crosswalk Zebra Lines
-        if (state.crosswalksEnabled) {
-          const crossDistPx = metersToPixels(state.outerRadius + state.crosswalkDistance);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 3;
-          ctx.setLineDash([]);
-          for (let x = -widthPx / 2 + 4; x < widthPx / 2 - 4; x += 8) {
-            ctx.beginPath();
-            ctx.moveTo(x, -crossDistPx - 6);
-            ctx.lineTo(x, -crossDistPx + 6);
-            ctx.stroke();
+        // Center Dividing Markings
+        ctx.beginPath();
+        ctx.setLineDash([8, 8]);
+        ctx.strokeStyle = leg.flowMode === 'two-way' ? '#f59e0b' : '#94a3b8';
+        ctx.moveTo(0, -legLengthPx);
+        ctx.lineTo(0, -outerPx - 15);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Zebra Crosswalks
+        if (appState.showCrosswalks) {
+          const cwDistance = outerPx + 35;
+          const cwWidth = legWidthPx - 4;
+          const stripeWidth = 5;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+          for (let x = -cwWidth / 2 + 2; x < cwWidth / 2 - 2; x += stripeWidth * 2) {
+            ctx.fillRect(x, -cwDistance, stripeWidth, 16);
           }
+        }
+
+        // Yield Triangles
+        if (appState.showYieldLines && leg.flowMode !== 'outbound-only') {
+          const yieldY = -outerPx - 5;
+          const entryOffset = appState.trafficStandard === 'RHT' ? -legWidthPx / 4 : legWidthPx / 4;
+          
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.beginPath();
+          ctx.moveTo(entryOffset - 6, yieldY - 12);
+          ctx.lineTo(entryOffset + 6, yieldY - 12);
+          ctx.lineTo(entryOffset, yieldY);
+          ctx.closePath();
+          ctx.fill();
         }
 
         ctx.restore();
       });
 
-      // Draw Outer Rotunda Ring
+      // 2. Main Roundabout Ring
       ctx.beginPath();
-      ctx.arc(0, 0, outerPx, 0, 2 * Math.PI);
-      ctx.fillStyle = '#334155';
+      ctx.arc(centerPx.x, centerPx.y, outerPx, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
       ctx.fill();
-
-      // Lane dividers inside ring
-      ctx.strokeStyle = '#94a3b8';
-      ctx.setLineDash([6, 6]);
-      const laneStep = (outerPx - innerPx) / state.lanes;
-      for (let i = 1; i < state.lanes; i++) {
-        ctx.beginPath();
-        ctx.arc(0, 0, innerPx + laneStep * i, 0, 2 * Math.PI);
-        ctx.stroke();
-      }
-
-      // Draw Central Island Park
-      ctx.beginPath();
-      ctx.arc(0, 0, innerPx, 0, 2 * Math.PI);
-      ctx.fillStyle = '#15803d';
-      ctx.fill();
-      ctx.strokeStyle = '#22c55e';
       ctx.lineWidth = 3;
-      ctx.setLineDash([]);
+      ctx.strokeStyle = '#ffffff';
       ctx.stroke();
 
-      ctx.restore();
+      // Inner Circulating Lane Dividers
+      if (appState.ringLanes > 1) {
+        const ringStep = (outerPx - islandPx) / appState.ringLanes;
+        for (let l = 1; l < appState.ringLanes; l++) {
+          ctx.beginPath();
+          ctx.arc(centerPx.x, centerPx.y, islandPx + ringStep * l, 0, Math.PI * 2);
+          ctx.setLineDash([6, 6]);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
 
-      // Update Analytics UI
-      document.getElementById('metric-throughput').textContent = processedCount;
-      document.getElementById('metric-active-cars').textContent = vehicles.length;
-      document.getElementById('metric-avg-delay').textContent = (1.2 + Math.random() * 0.4).toFixed(1) + 's';
+      // 3. Central Island Circle
+      ctx.beginPath();
+      ctx.arc(centerPx.x, centerPx.y, islandPx, 0, Math.PI * 2);
+      ctx.fillStyle = '#059669';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#10b981';
+      ctx.stroke();
 
-      requestAnimationFrame(renderOverlay);
+      ctx.beginPath();
+      ctx.arc(centerPx.x, centerPx.y, Math.max(islandPx - 6, 2), 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(6, 78, 59, 0.6)';
+      ctx.fill();
+
+      // Crosshair Center
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(centerPx.x - 10, centerPx.y);
+      ctx.lineTo(centerPx.x + 10, centerPx.y);
+      ctx.moveTo(centerPx.x, centerPx.y - 10);
+      ctx.lineTo(centerPx.x, centerPx.y + 10);
+      ctx.stroke();
+
+      // 4. Trajectory Guide Lines
+      if (appState.guideLines) {
+        ctx.beginPath();
+        ctx.arc(centerPx.x, centerPx.y, (outerPx + islandPx) / 2, 0, Math.PI * 2);
+        ctx.strokeStyle = appState.trafficStandard === 'RHT' ? 'rgba(14, 165, 233, 0.35)' : 'rgba(236, 72, 153, 0.35)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // 5. Draw Active Microscopic Vehicles
+      drawVehicleAgents(centerPx, outerPx, islandPx);
     }
 
-    renderOverlay();
+    function spawnVehicle() {
+      if (appState.legs.length === 0) return;
+
+      const validEntryLegs = appState.legs.filter(l => l.flowMode !== 'outbound-only');
+      const validExitLegs = appState.legs.filter(l => l.flowMode !== 'inbound-only');
+
+      if (validEntryLegs.length === 0 || validExitLegs.length === 0) return;
+
+      const totalInflowWeight = validEntryLegs.reduce((sum, leg) => sum + (leg.spawnWeight || 1.0), 0);
+      let rndInflow = Math.random() * totalInflowWeight;
+      let entryLeg = validEntryLegs[0];
+
+      for (let leg of validEntryLegs) {
+        const weight = leg.spawnWeight || 1.0;
+        if (rndInflow <= weight) {
+          entryLeg = leg;
+          break;
+        }
+        rndInflow -= weight;
+      }
+
+      let availableExitLegs = validExitLegs.filter(l => validExitLegs.length === 1 || l.id !== entryLeg.id);
+      if (availableExitLegs.length === 0) availableExitLegs = validExitLegs;
+
+      let exitLeg = availableExitLegs[0];
+      const pref = entryLeg.exitPreference || 'balanced';
+
+      if (pref === 'balanced' || availableExitLegs.length <= 1) {
+        exitLeg = availableExitLegs[Math.floor(Math.random() * availableExitLegs.length)];
+      } else {
+        const entryAngle = (entryLeg.baseAngle + entryLeg.angleOffset + appState.globalAngleOffset + 360) % 360;
+
+        const weightedExits = availableExitLegs.map(l => {
+          const exitAngle = (l.baseAngle + l.angleOffset + appState.globalAngleOffset + 360) % 360;
+          let diff = (exitAngle - entryAngle + 360) % 360;
+          let weight = 1.0;
+
+          if (pref === 'opposite') {
+            const oppositeDiff = Math.abs(diff - 180);
+            weight = Math.max(0.2, 5.0 - (oppositeDiff / 30));
+          } else if (pref === 'turn-right') {
+            const targetDiff = appState.trafficStandard === 'RHT' ? 90 : 270;
+            const rightDiff = Math.abs(diff - targetDiff);
+            weight = Math.max(0.2, 5.0 - (rightDiff / 30));
+          } else if (pref === 'turn-left') {
+            const targetDiff = appState.trafficStandard === 'RHT' ? 270 : 90;
+            const leftDiff = Math.abs(diff - targetDiff);
+            weight = Math.max(0.2, 5.0 - (leftDiff / 30));
+          }
+          return { leg: l, weight: Math.max(0.1, weight) };
+        });
+
+        const totalExitWeight = weightedExits.reduce((sum, item) => sum + item.weight, 0);
+        let rndExit = Math.random() * totalExitWeight;
+
+        for (let item of weightedExits) {
+          if (rndExit <= item.weight) {
+            exitLeg = item.leg;
+            break;
+          }
+          rndExit -= item.weight;
+        }
+      }
+
+      const sortedLegs = [...appState.legs].sort((a, b) => {
+        const aAngle = (a.baseAngle + a.angleOffset) % 360;
+        const bAngle = (b.baseAngle + b.angleOffset) % 360;
+        return aAngle - bAngle;
+      });
+
+      const entryIdx = sortedLegs.findIndex(l => l.id === entryLeg.id);
+      const exitIdx = sortedLegs.findIndex(l => l.id === exitLeg.id);
+
+      let stepCount = 0;
+      if (appState.trafficStandard === 'RHT') {
+        stepCount = (exitIdx - entryIdx + sortedLegs.length) % sortedLegs.length;
+      } else {
+        stepCount = (entryIdx - exitIdx + sortedLegs.length) % sortedLegs.length;
+      }
+      if (stepCount === 0) stepCount = sortedLegs.length;
+
+      let targetLaneFraction = 0.8;
+      if (appState.ringLanes > 1) {
+        if (stepCount === 1) {
+          targetLaneFraction = 0.82;
+        } else if (stepCount === 2) {
+          targetLaneFraction = appState.ringLanes === 3 ? 0.52 : 0.72;
+        } else {
+          targetLaneFraction = 0.22;
+        }
+      }
+
+      const vehicleColor = ['#38bdf8', '#34d399', '#f87171', '#fbbf24', '#a78bfa'][Math.floor(Math.random() * 5)];
+      const baseSpeed = (appState.maxSpeedKmH / 3600) * 0.08;
+
+      vehicleAgents.push({
+        id: Math.random(),
+        entryLegId: entryLeg.id,
+        exitLegId: exitLeg.id,
+        progress: 0,
+        speed: baseSpeed,
+        currentSpeed: baseSpeed,
+        color: vehicleColor,
+        laneFraction: targetLaneFraction,
+        stepCount: stepCount,
+        isYielding: false
+      });
+    }
+
+    function getVehiclePosition(car, progress, centerPx, outerPx, islandPx, centerLatLng) {
+      const entryLeg = appState.legs.find(l => l.id === car.entryLegId) || appState.legs[0];
+      const exitLeg = appState.legs.find(l => l.id === car.exitLegId) || appState.legs[0];
+
+      const entryAngleDeg = (entryLeg.baseAngle + entryLeg.angleOffset + appState.globalAngleOffset) % 360;
+      const exitAngleDeg = (exitLeg.baseAngle + exitLeg.angleOffset + appState.globalAngleOffset) % 360;
+
+      const outerLaneRadius = islandPx + (outerPx - islandPx) * 0.78;
+      const targetRadius = islandPx + (outerPx - islandPx) * car.laneFraction;
+
+      let posX = centerPx.x;
+      let posY = centerPx.y;
+
+      if (progress < 1) {
+        const entryLenPx = getPixelRadius(centerLatLng, entryLeg.lengthMeters || 120);
+        const dist = entryLenPx * (1 - progress) + outerPx;
+        const rad = (entryAngleDeg * Math.PI) / 180;
+        const entryOffsetMeters = appState.trafficStandard === 'RHT' ? -(entryLeg.widthMeters / 4) : (entryLeg.widthMeters / 4);
+        const localXPx = getPixelRadius(centerLatLng, entryOffsetMeters) * Math.sign(entryOffsetMeters);
+
+        let effLocalX = localXPx;
+        if (progress > 0.7) {
+          const curveBlend = (progress - 0.7) / 0.3;
+          effLocalX = localXPx * (1 - curveBlend) + (appState.trafficStandard === 'RHT' ? -targetRadius * 0.2 : targetRadius * 0.2) * curveBlend;
+        }
+
+        const localYPx = -dist;
+        posX = centerPx.x + effLocalX * Math.cos(rad) - localYPx * Math.sin(rad);
+        posY = centerPx.y + effLocalX * Math.sin(rad) + localYPx * Math.cos(rad);
+
+      } else if (progress >= 1 && progress < 2) {
+        const ringProgress = progress - 1;
+        let startAngle = (entryAngleDeg - 90) * (Math.PI / 180);
+        let endAngle = (exitAngleDeg - 90) * (Math.PI / 180);
+
+        if (appState.trafficStandard === 'RHT') {
+          if (endAngle <= startAngle) endAngle += Math.PI * 2;
+        } else {
+          if (endAngle >= startAngle) endAngle -= Math.PI * 2;
+        }
+
+        const currentArcAngle = startAngle + (endAngle - startAngle) * ringProgress;
+
+        let currentRadius = targetRadius;
+        if (ringProgress < 0.3) {
+          const t = ringProgress / 0.3;
+          const easeT = t * t * (3 - 2 * t);
+          currentRadius = outerLaneRadius * (1 - easeT) + targetRadius * easeT;
+        } else if (ringProgress > 0.7) {
+          const t = (ringProgress - 0.7) / 0.3;
+          const easeT = t * t * (3 - 2 * t);
+          currentRadius = targetRadius * (1 - easeT) + outerLaneRadius * easeT;
+        }
+
+        posX = centerPx.x + Math.cos(currentArcAngle) * currentRadius;
+        posY = centerPx.y + Math.sin(currentArcAngle) * currentRadius;
+
+      } else {
+        const exitProgress = progress - 2;
+        const exitLenPx = getPixelRadius(centerLatLng, exitLeg.lengthMeters || 120);
+        const dist = outerPx + exitLenPx * exitProgress;
+        const rad = (exitAngleDeg * Math.PI) / 180;
+        const exitOffsetMeters = appState.trafficStandard === 'RHT' ? (exitLeg.widthMeters / 4) : -(exitLeg.widthMeters / 4);
+        const localXPx = getPixelRadius(centerLatLng, exitOffsetMeters) * Math.sign(exitOffsetMeters);
+
+        let effLocalX = localXPx;
+        if (exitProgress < 0.2) {
+          const curveBlend = exitProgress / 0.2;
+          effLocalX = (appState.trafficStandard === 'RHT' ? outerLaneRadius * 0.2 : -outerLaneRadius * 0.2) * (1 - curveBlend) + localXPx * curveBlend;
+        }
+
+        const localYPx = -dist;
+        posX = centerPx.x + effLocalX * Math.cos(rad) - localYPx * Math.sin(rad);
+        posY = centerPx.y + effLocalX * Math.sin(rad) + localYPx * Math.cos(rad);
+      }
+
+      return { x: posX, y: posY };
+    }
+
+    function updateSimulation(dt) {
+      if (!appState.simulationRunning) return;
+
+      const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
+      const centerPx = map.latLngToContainerPoint(centerLatLng);
+      const outerPx = getPixelRadius(centerLatLng, appState.outerRadiusMeters);
+      const islandPx = getPixelRadius(centerLatLng, appState.islandRadiusMeters);
+
+      const spawnInterval = (60 / appState.spawnRatePerMin);
+      if (Math.random() < (dt / spawnInterval)) {
+        spawnVehicle();
+      }
+
+      const ringCars = vehicleAgents.filter(c => c.progress >= 1.0 && c.progress < 2.0);
+      const ringOccupancy = ringCars.length;
+
+      const avgRadiusMeters = (appState.outerRadiusMeters + appState.islandRadiusMeters) / 2;
+      const circumferenceMeters = 2 * Math.PI * avgRadiusMeters;
+      const maxRingCapacity = Math.max(6, Math.floor((circumferenceMeters / 7.5) * appState.ringLanes));
+
+      const carData = vehicleAgents.map(car => {
+        const pos = getVehiclePosition(car, car.progress, centerPx, outerPx, islandPx, centerLatLng);
+        const aheadPos = getVehiclePosition(car, car.progress + 0.005, centerPx, outerPx, islandPx, centerLatLng);
+        const dx = aheadPos.x - pos.x;
+        const dy = aheadPos.y - pos.y;
+        const len = Math.hypot(dx, dy) || 1;
+        return {
+          car,
+          pos,
+          dir: { x: dx / len, y: dy / len }
+        };
+      });
+
+      let yieldingCount = 0;
+
+      for (let i = 0; i < carData.length; i++) {
+        const item = carData[i];
+        const car = item.car;
+        const pos = item.pos;
+        const dir = item.dir;
+
+        let targetSpeed = car.speed;
+        let mustStopForYield = false;
+
+        if (car.progress >= 0.90 && car.progress < 1.0) {
+          if (ringOccupancy >= maxRingCapacity) {
+            mustStopForYield = true;
+          }
+
+          if (!mustStopForYield) {
+            const yieldThresholdPx = Math.max(25, outerPx * 0.45);
+            for (let rCar of ringCars) {
+              const rPos = getVehiclePosition(rCar, rCar.progress, centerPx, outerPx, islandPx, centerLatLng);
+              const distToEntry = Math.hypot(rPos.x - pos.x, rPos.y - pos.y);
+
+              if (distToEntry < yieldThresholdPx) {
+                mustStopForYield = true;
+                break;
+              }
+            }
+          }
+
+          if (mustStopForYield) {
+            targetSpeed = 0;
+            car.isYielding = true;
+            yieldingCount++;
+          } else {
+            car.isYielding = false;
+          }
+        } else {
+          car.isYielding = false;
+        }
+
+        const MIN_SAFE_GAP = 24;
+
+        for (let j = 0; j < carData.length; j++) {
+          if (i === j) continue;
+          const other = carData[j];
+
+          const relX = other.pos.x - pos.x;
+          const relY = other.pos.y - pos.y;
+          const dist = Math.hypot(relX, relY);
+          const dot = relX * dir.x + relY * dir.y;
+
+          if (dist < MIN_SAFE_GAP && dot > 0) {
+            const gapFactor = Math.max(0, (dist - 10) / (MIN_SAFE_GAP - 10));
+            targetSpeed = Math.min(targetSpeed, car.speed * gapFactor);
+            if (dist < 14) targetSpeed = 0;
+          }
+        }
+
+        if (targetSpeed < car.currentSpeed) {
+          car.currentSpeed += (targetSpeed - car.currentSpeed) * Math.min(1, dt * 14);
+        } else {
+          car.currentSpeed += (targetSpeed - car.currentSpeed) * Math.min(1, dt * 6);
+        }
+
+        if (mustStopForYield && car.progress >= 0.95 && car.progress < 1.0) {
+          car.progress = 0.95;
+          car.currentSpeed = 0;
+        } else {
+          car.progress += car.currentSpeed * dt * 60;
+        }
+      }
+
+      for (let i = vehicleAgents.length - 1; i >= 0; i--) {
+        if (vehicleAgents[i].progress >= 3.0) {
+          vehicleAgents.splice(i, 1);
+          simStats.totalProcessed++;
+        }
+      }
+
+      simStats.activeCarsCount = vehicleAgents.length;
+      updateHUD(yieldingCount);
+    }
+
+    function drawVehicleAgents(centerPx, outerPx, islandPx) {
+      const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
+
+      vehicleAgents.forEach((car) => {
+        const pos = getVehiclePosition(car, car.progress, centerPx, outerPx, islandPx, centerLatLng);
+        const aheadPos = getVehiclePosition(car, car.progress + 0.005, centerPx, outerPx, islandPx, centerLatLng);
+
+        const dx = aheadPos.x - pos.x;
+        const dy = aheadPos.y - pos.y;
+        const headingRad = Math.atan2(dy, dx) + Math.PI / 2;
+
+        ctx.save();
+        ctx.translate(pos.x, pos.y);
+        ctx.rotate(headingRad);
+
+        ctx.fillStyle = car.color;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 4;
+        ctx.fillRect(-5, -9, 10, 18);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-4, -6, 8, 4);
+
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(-4, -9, 2, 1);
+        ctx.fillRect(2, -9, 2, 1);
+
+        if (car.currentSpeed < car.speed * 0.3 || car.isYielding) {
+          ctx.fillStyle = '#ef4444';
+          ctx.shadowColor = '#ef4444';
+          ctx.shadowBlur = 6;
+          ctx.fillRect(-4, 8, 2.5, 1.5);
+          ctx.fillRect(1.5, 8, 2.5, 1.5);
+        }
+
+        ctx.restore();
+      });
+    }
+
+    function updateHUD(yieldingCount = 0) {
+      const throughputEl = document.getElementById('hud-throughput');
+      const delayEl = document.getElementById('hud-delay');
+      const activeCarsEl = document.getElementById('hud-active-cars');
+      const activePedsEl = document.getElementById('hud-active-peds');
+      const capPercentEl = document.getElementById('hud-capacity-percent');
+      const capBarEl = document.getElementById('hud-capacity-bar');
+
+      if (throughputEl) throughputEl.textContent = simStats.totalProcessed;
+      if (activeCarsEl) activeCarsEl.textContent = simStats.activeCarsCount;
+      
+      const pedCount = Math.floor(simStats.activeCarsCount * 0.15);
+      if (activePedsEl) activePedsEl.textContent = pedCount;
+
+      const avgDelay = ((simStats.activeCarsCount * 0.12) + (yieldingCount * 1.2)).toFixed(1);
+      if (delayEl) delayEl.textContent = `${avgDelay} s`;
+
+      const avgRadiusMeters = (appState.outerRadiusMeters + appState.islandRadiusMeters) / 2;
+      const circumferenceMeters = 2 * Math.PI * avgRadiusMeters;
+      const maxRingCapacity = Math.max(6, Math.floor((circumferenceMeters / 7.5) * appState.ringLanes));
+
+      const ringCars = vehicleAgents.filter(c => c.progress >= 1.0 && c.progress < 2.0);
+      const ringOccupancy = ringCars.length;
+
+      const capacityRatio = Math.min(100, Math.round((ringOccupancy / maxRingCapacity) * 100));
+      if (capPercentEl) capPercentEl.textContent = `${capacityRatio}% (${ringOccupancy}/${maxRingCapacity} Ring Cars)`;
+      if (capBarEl) {
+        capBarEl.style.width = `${capacityRatio}%`;
+        if (capacityRatio > 85) {
+          capBarEl.className = "bg-rose-500 h-full transition-all duration-300";
+        } else if (capacityRatio > 60) {
+          capBarEl.className = "bg-amber-500 h-full transition-all duration-300";
+        } else {
+          capBarEl.className = "bg-sky-500 h-full transition-all duration-300";
+        }
+      }
+    }
+
+    function animate(now) {
+      const dt = Math.min((now - lastAnimTime) / 1000, 0.1);
+      lastAnimTime = now;
+
+      if (appState.simulationRunning) {
+        updateSimulation(dt);
+      }
+      render();
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('load', () => {
+      safeLoadLocalStorage();
+      loadSavedRotundas();
+      initLegsState();
+      initMap();
+      initCanvas();
+      bindUIControls();
+      renderPerLegUIControls();
+      renderSavedRotundas();
+
+      lastAnimTime = performance.now();
+      requestAnimationFrame(animate);
+    });
   </script>
 </body>
 </html>
