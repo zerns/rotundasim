@@ -566,9 +566,9 @@
         if (saved) {
           savedRotundas = JSON.parse(saved);
           const mckinley = savedRotundas.find(r => r.id === 'preset-bgc-mckinley');
-          if (mckinley && mckinley.state && mckinley.state.centerLat === 14.5472 && mckinley.state.centerLng === 121.0381) {
-            mckinley.state.centerLat = 14.545101;
-            mckinley.state.centerLng = 121.045733;
+          const mckinleyDefault = DEFAULT_PRESET_LIST.find(r => r.id === 'preset-bgc-mckinley');
+          if (mckinley && mckinleyDefault) {
+            mckinley.state = JSON.parse(JSON.stringify(mckinleyDefault.state));
             saveSavedRotundasToStorage();
           }
         } else {
