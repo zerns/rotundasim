@@ -431,79 +431,26 @@
       {
         id: 'preset-bgc-mckinley',
         name: 'McKinley Rd & 5th Ave Junction',
-        timestamp: 1700000000000,
+        timestamp: 1700000000001,
         isDefault: true,
         state: {
-          centerLat: 14.5472,
-          centerLng: 121.0381,
+          centerLat: 14.545101,
+          centerLng: 121.045733,
           zoom: 18,
-          outerRadiusMeters: 38,
-          islandRadiusMeters: 20,
+          outerRadiusMeters: 18,
+          islandRadiusMeters: 7,
           ringLanes: 2,
           legCount: 4,
-          globalAngleOffset: -12,
+          globalAngleOffset: 4,
           trafficStandard: 'RHT',
-          spawnRatePerMin: 50,
-          maxSpeedKmH: 35,
+          spawnRatePerMin: 10,
+          maxSpeedKmH: 3,
           selectedScenario: 'balanced',
           legs: [
-            { id: 0, baseAngle: 0, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.2, exitPreference: 'balanced' },
-            { id: 1, baseAngle: 90, angleOffset: 5, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
-            { id: 2, baseAngle: 180, angleOffset: -2, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.2, exitPreference: 'balanced' },
-            { id: 3, baseAngle: 270, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 0.8, exitPreference: 'balanced' }
-          ]
-        }
-      },
-      {
-        id: 'preset-matina-davao',
-        name: 'Matina Crossing Junction (Davao)',
-        timestamp: 1699000000000,
-        isDefault: true,
-        state: {
-          centerLat: 7.0707,
-          centerLng: 125.6087,
-          zoom: 18,
-          outerRadiusMeters: 35,
-          islandRadiusMeters: 18,
-          ringLanes: 2,
-          legCount: 4,
-          globalAngleOffset: 15,
-          trafficStandard: 'RHT',
-          spawnRatePerMin: 60,
-          maxSpeedKmH: 35,
-          selectedScenario: 'am-rush',
-          legs: [
-            { id: 0, baseAngle: 0, angleOffset: 0, widthMeters: 24, lengthMeters: 130, flowMode: 'two-way', spawnWeight: 2.5, exitPreference: 'opposite' },
-            { id: 1, baseAngle: 90, angleOffset: -8, widthMeters: 20, lengthMeters: 110, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
-            { id: 2, baseAngle: 180, angleOffset: 5, widthMeters: 24, lengthMeters: 130, flowMode: 'two-way', spawnWeight: 1.5, exitPreference: 'opposite' },
-            { id: 3, baseAngle: 270, angleOffset: 0, widthMeters: 18, lengthMeters: 100, flowMode: 'two-way', spawnWeight: 0.8, exitPreference: 'balanced' }
-          ]
-        }
-      },
-      {
-        id: 'preset-buhangin-davao',
-        name: 'Buhangin Flyover Roundabout (Davao)',
-        timestamp: 1698000000000,
-        isDefault: true,
-        state: {
-          centerLat: 7.0982,
-          centerLng: 125.6262,
-          zoom: 18,
-          outerRadiusMeters: 42,
-          islandRadiusMeters: 24,
-          ringLanes: 3,
-          legCount: 5,
-          globalAngleOffset: 0,
-          trafficStandard: 'RHT',
-          spawnRatePerMin: 55,
-          maxSpeedKmH: 40,
-          selectedScenario: 'balanced',
-          legs: [
-            { id: 0, baseAngle: 0, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
-            { id: 1, baseAngle: 72, angleOffset: 0, widthMeters: 20, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
-            { id: 2, baseAngle: 144, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
-            { id: 3, baseAngle: 216, angleOffset: 0, widthMeters: 20, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
-            { id: 4, baseAngle: 288, angleOffset: 0, widthMeters: 22, lengthMeters: 120, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' }
+            { id: 0, baseAngle: 0, angleOffset: 0, widthMeters: 18, lengthMeters: 50, flowMode: 'two-way', spawnWeight: 1.2, exitPreference: 'balanced' },
+            { id: 1, baseAngle: 90, angleOffset: -17, widthMeters: 18, lengthMeters: 40, flowMode: 'two-way', spawnWeight: 1.0, exitPreference: 'balanced' },
+            { id: 2, baseAngle: 180, angleOffset: -12, widthMeters: 18, lengthMeters: 45, flowMode: 'two-way', spawnWeight: 1.2, exitPreference: 'balanced' },
+            { id: 3, baseAngle: 270, angleOffset: -6, widthMeters: 18, lengthMeters: 40, flowMode: 'two-way', spawnWeight: 0.8, exitPreference: 'balanced' }
           ]
         }
       }
@@ -516,6 +463,12 @@
         const saved = localStorage.getItem('rotundasim_saved_list');
         if (saved) {
           savedRotundas = JSON.parse(saved);
+          const mckinley = savedRotundas.find(r => r.id === 'preset-bgc-mckinley');
+          if (mckinley && mckinley.state && mckinley.state.centerLat === 14.5472 && mckinley.state.centerLng === 121.0381) {
+            mckinley.state.centerLat = 14.545101;
+            mckinley.state.centerLng = 121.045733;
+            saveSavedRotundasToStorage();
+          }
         } else {
           savedRotundas = JSON.parse(JSON.stringify(DEFAULT_PRESET_LIST));
           saveSavedRotundasToStorage();
@@ -575,6 +528,10 @@
         const saved = localStorage.getItem('rotundasim_config');
         if (saved) {
           const parsed = JSON.parse(saved);
+          if (parsed.centerLat === 14.5472 && parsed.centerLng === 121.0381) {
+            parsed.centerLat = DEFAULT_LAT;
+            parsed.centerLng = DEFAULT_LNG;
+          }
           Object.assign(appState, parsed);
         }
       } catch (e) {
