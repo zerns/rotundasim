@@ -186,27 +186,247 @@
       return temp.innerHTML;
     }
 
-    function initLegsState() {
-      appState.legs = [];
-      const baseAngles = {
+    function baseAnglesForLegCount(count) {
+      return {
         3: [0, 120, 240],
         4: [0, 90, 180, 270],
         5: [0, 72, 144, 216, 288],
         6: [0, 60, 120, 180, 240, 300]
-      }[appState.legCount] || [0, 90, 180, 270];
+      }[count] || [0, 90, 180, 270];
+    }
 
-      for (let i = 0; i < appState.legCount; i++) {
-        appState.legs.push({
-          id: i,
-          angleOffset: 0,
-          baseAngle: baseAngles[i],
-          widthMeters: 22,
-          lengthMeters: 120,
-          flowMode: 'two-way',
-          spawnWeight: 1.0,
-          exitPreference: 'balanced'
-        });
+    function buildDefaultLegs(count) {
+      return baseAnglesForLegCount(count).map((baseAngle, i) => ({
+        id: i,
+        angleOffset: 0,
+        baseAngle,
+        widthMeters: 22,
+        lengthMeters: 120,
+        flowMode: 'two-way',
+        spawnWeight: 1.0,
+        exitPreference: 'balanced'
+      }));
+    }
+
+    function initLegsState() {
+      appState.legs = buildDefaultLegs(appState.legCount);
+    }
+
+    // --- Shareable link encoding ---------------------------------------------
+    // Payload is obfuscated, not encrypted: the key ships in this file, so it
+    // only keeps the URL from being trivially readable/editable by hand.
+    const SHARE_XOR_KEY = 'rotundasim-share-v1';
+    const SHARE_LEGS_KEY = 'L';
+
+    // Short keys keep the URL manageable; bounds mirror the slider/select
+    // limits in index.html so a tampered link can't feed the simulation
+    // values the UI itself would never produce.
+    const SHARE_FIELD_SPECS = {
+      centerLat:          { key: 'la', label: 'Latitude',         type: 'number', min: -90, max: 90, def: DEFAULT_LAT, round: 6 },
+      centerLng:          { key: 'ln', label: 'Longitude',        type: 'number', min: -180, max: 180, def: DEFAULT_LNG, round: 6 },
+      zoom:               { key: 'z',  label: 'Zoom',             type: 'int',    min: 1, max: 22, def: 18 },
+      outerRadiusMeters:  { key: 'or', label: 'Outer radius',     type: 'int',    min: 15, max: 80, def: 35, unit: ' m' },
+      islandRadiusMeters: { key: 'ir', label: 'Island radius',    type: 'int',    min: 5, max: 50, def: 18, unit: ' m' },
+      ringLanes:          { key: 'rl', label: 'Ring lanes',       type: 'int',    values: [1, 2, 3], def: 2 },
+      legCount:           { key: 'lc', label: 'Leg count',        type: 'int',    values: [3, 4, 5, 6], def: 4 },
+      globalAngleOffset:  { key: 'ga', label: 'Rotation',         type: 'int',    min: -180, max: 180, def: 0, unit: '°' },
+      trafficStandard:    { key: 'ts', label: 'Traffic standard', type: 'enum',   values: ['RHT', 'LHT'], def: 'RHT' },
+      spawnRatePerMin:    { key: 'sr', label: 'Spawn rate',       type: 'int',    min: 10, max: 150, def: 45, unit: ' / min' },
+      maxSpeedKmH:        { key: 'ms', label: 'Max speed',        type: 'int',    min: 15, max: 70, def: 35, unit: ' km/h' },
+      selectedScenario:   { key: 'sc', label: 'Scenario',         type: 'enum',   values: ['am-rush', 'pm-rush', 'arterial', 'balanced'], def: 'balanced' }
+    };
+
+    // baseAngle and id are omitted: both are derived from the leg's position.
+    const SHARE_LEG_SPECS = {
+      angleOffset:    { key: 'o',  label: 'angle offset', type: 'int',    min: -180, max: 180, def: 0, unit: '°' },
+      widthMeters:    { key: 'w',  label: 'road width',   type: 'int',    min: 12, max: 50, def: 22, unit: ' m' },
+      lengthMeters:   { key: 'l',  label: 'leg length',   type: 'int',    min: 40, max: 250, def: 120, unit: ' m' },
+      flowMode:       { key: 'f',  label: 'flow mode',    type: 'enum',   values: ['two-way', 'inbound-only', 'outbound-only'], def: 'two-way' },
+      spawnWeight:    { key: 'sw', label: 'demand',       type: 'number', min: 0.1, max: 3.0, def: 1.0, round: 2 },
+      exitPreference: { key: 'ep', label: 'destination',  type: 'enum',   values: ['balanced', 'opposite', 'turn-right', 'turn-left'], def: 'balanced' }
+    };
+
+    function xorShareBytes(bytes) {
+      const out = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) {
+        out[i] = bytes[i] ^ SHARE_XOR_KEY.charCodeAt(i % SHARE_XOR_KEY.length);
       }
+      return out;
+    }
+
+    function bytesToBase64Url(bytes) {
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function base64UrlToBytes(str) {
+      const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+      const binary = atob(base64 + '='.repeat((4 - base64.length % 4) % 4));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    function encodeShareConfig(payload) {
+      const bytes = new TextEncoder().encode(JSON.stringify(payload));
+      return bytesToBase64Url(xorShareBytes(bytes));
+    }
+
+    function decodeShareConfig(str) {
+      try {
+        const json = new TextDecoder().decode(xorShareBytes(base64UrlToBytes(str)));
+        const parsed = JSON.parse(json);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        return parsed;
+      } catch (e) {
+        console.warn('Unable to decode shared rotunda link:', e);
+        return null;
+      }
+    }
+
+    function roundShareValue(spec, value) {
+      if (spec.type === 'int') return Math.round(value);
+      if (spec.round !== undefined) return Number(value.toFixed(spec.round));
+      return value;
+    }
+
+    // Returns the encodable value, or undefined when the field should be
+    // omitted (absent, unusable, or already equal to the default).
+    function shareValueFor(spec, raw) {
+      if (raw === undefined || raw === null) return undefined;
+      let value = raw;
+      if (spec.type !== 'enum') {
+        value = Number(value);
+        if (!Number.isFinite(value)) return undefined;
+        value = roundShareValue(spec, value);
+      }
+      return value === spec.def ? undefined : value;
+    }
+
+    function toSharePayload(snapshot) {
+      const payload = {};
+      Object.keys(SHARE_FIELD_SPECS).forEach(name => {
+        const spec = SHARE_FIELD_SPECS[name];
+        const value = shareValueFor(spec, snapshot[name]);
+        if (value !== undefined) payload[spec.key] = value;
+      });
+
+      const legs = Array.isArray(snapshot.legs) ? snapshot.legs : [];
+      payload[SHARE_LEGS_KEY] = legs.map(leg => {
+        const encoded = {};
+        Object.keys(SHARE_LEG_SPECS).forEach(name => {
+          const spec = SHARE_LEG_SPECS[name];
+          const value = shareValueFor(spec, leg ? leg[name] : undefined);
+          if (value !== undefined) encoded[spec.key] = value;
+        });
+        return encoded;
+      });
+
+      return payload;
+    }
+
+    function describeShareValue(raw) {
+      let text;
+      if (typeof raw === 'string') text = `"${raw}"`;
+      else if (typeof raw === 'object') text = Array.isArray(raw) ? 'a list' : 'an object';
+      else text = String(raw);
+      return text.length > 24 ? `${text.slice(0, 24)}…` : text;
+    }
+
+    // An absent key takes the default silently; a key that is present but
+    // unsupported takes the default and reports a warning.
+    function validateShareField(spec, raw) {
+      if (raw === undefined || raw === null) return { value: spec.def, warning: null };
+
+      if (spec.type === 'enum') {
+        if (typeof raw === 'string' && spec.values.includes(raw)) {
+          return { value: raw, warning: null };
+        }
+      } else if (typeof raw === 'number' || typeof raw === 'string') {
+        let value = Number(raw);
+        if (Number.isFinite(value)) {
+          if (spec.type === 'int') value = Math.round(value);
+          const inList = !spec.values || spec.values.includes(value);
+          const inRange = (spec.min === undefined || value >= spec.min) &&
+                          (spec.max === undefined || value <= spec.max);
+          if (inList && inRange) return { value, warning: null };
+        }
+      }
+
+      return {
+        value: spec.def,
+        warning: `unsupported value ${describeShareValue(raw)}, used default (${spec.def}${spec.unit || ''})`
+      };
+    }
+
+    function validateSharedState(payload) {
+      const warnings = [];
+      const state = {};
+
+      Object.keys(SHARE_FIELD_SPECS).forEach(name => {
+        const spec = SHARE_FIELD_SPECS[name];
+        const result = validateShareField(spec, payload[spec.key]);
+        state[name] = result.value;
+        if (result.warning) warnings.push(`${spec.label}: ${result.warning}`);
+      });
+
+      const rawLegs = payload[SHARE_LEGS_KEY];
+      const legCountSpec = SHARE_FIELD_SPECS.legCount;
+      const legCountWasSent = payload[legCountSpec.key] !== undefined && payload[legCountSpec.key] !== null;
+
+      if (rawLegs === undefined || rawLegs === null) {
+        state.legs = buildDefaultLegs(state.legCount);
+      } else if (!Array.isArray(rawLegs) || !legCountSpec.values.includes(rawLegs.length)) {
+        warnings.push(`Legs: unsupported value, used ${state.legCount} default legs`);
+        state.legs = buildDefaultLegs(state.legCount);
+      } else {
+        const baseAngles = baseAnglesForLegCount(rawLegs.length);
+        state.legs = rawLegs.map((rawLeg, idx) => {
+          const isObject = rawLeg !== null && typeof rawLeg === 'object' && !Array.isArray(rawLeg);
+          if (!isObject && rawLeg !== undefined && rawLeg !== null) {
+            warnings.push(`Leg ${idx + 1}: unsupported value, used defaults`);
+          }
+          const source = isObject ? rawLeg : {};
+          const leg = { id: idx, baseAngle: baseAngles[idx] };
+          Object.keys(SHARE_LEG_SPECS).forEach(name => {
+            const spec = SHARE_LEG_SPECS[name];
+            const result = validateShareField(spec, source[spec.key]);
+            leg[name] = result.value;
+            if (result.warning) warnings.push(`Leg ${idx + 1} ${spec.label}: ${result.warning}`);
+          });
+          return leg;
+        });
+
+        // legCount is read independently of legs.length when rendering, so the
+        // two must agree; the leg array is the source of truth.
+        if (state.legCount !== state.legs.length) {
+          if (legCountWasSent) {
+            warnings.push(`Leg count: ${state.legCount} did not match the ${state.legs.length} legs in the link, used ${state.legs.length}`);
+          }
+          state.legCount = state.legs.length;
+        }
+      }
+
+      return { state, warnings };
+    }
+
+    function buildShareLink() {
+      const encoded = encodeShareConfig(toSharePayload(buildStateSnapshot()));
+      return `${location.origin}${location.pathname}?share=${encoded}`;
+    }
+
+    function showSharedConfigWarnings(warnings) {
+      const banner = document.getElementById('share-warning-banner');
+      const list = document.getElementById('share-warning-list');
+      if (!banner || !list || !warnings.length) return;
+      list.textContent = '';
+      warnings.forEach(text => {
+        const item = document.createElement('li');
+        item.textContent = text;
+        list.appendChild(item);
+      });
+      banner.classList.remove('hidden');
     }
 
     function initMap() {
@@ -874,6 +1094,72 @@
 
       if (closeLimitModalBtn) closeLimitModalBtn.addEventListener('click', closeLimitReachedModal);
       if (okLimitBtn) okLimitBtn.addEventListener('click', closeLimitReachedModal);
+
+      // Share Link Modal
+      const shareModal = document.getElementById('share-modal');
+      const openShareModalBtn = document.getElementById('btn-open-share-modal');
+      const closeShareModalBtn = document.getElementById('btn-close-share-modal');
+      const shareLinkInput = document.getElementById('share-link-input');
+      const copyShareLinkBtn = document.getElementById('btn-copy-share-link');
+      const shareStatus = document.getElementById('share-modal-status');
+
+      function setShareStatus(message, ok) {
+        if (!shareStatus) return;
+        shareStatus.textContent = message;
+        shareStatus.className = `text-[11px] ${ok ? 'text-emerald-400' : 'text-amber-400'}`;
+      }
+
+      // The link is always visible in the modal because clipboard access is not
+      // dependable: it needs a secure context and can be permission-blocked.
+      function copyShareLink() {
+        if (!shareLinkInput) return;
+        const link = shareLinkInput.value;
+        Promise.resolve()
+          .then(() => {
+            if (!navigator.clipboard || !navigator.clipboard.writeText) {
+              throw new Error('Clipboard API unavailable');
+            }
+            return navigator.clipboard.writeText(link);
+          })
+          .then(() => setShareStatus('Link copied to clipboard.', true))
+          .catch(() => setShareStatus('Couldn’t copy automatically — select the link above and copy it manually.', false));
+      }
+
+      function openShareModal() {
+        if (!shareModal || !shareLinkInput) return;
+        shareLinkInput.value = buildShareLink();
+        setShareStatus('Copying link…', true);
+        shareModal.classList.remove('hidden');
+        copyShareLink();
+      }
+
+      function closeShareModal() {
+        if (shareModal) shareModal.classList.add('hidden');
+      }
+
+      if (openShareModalBtn) openShareModalBtn.addEventListener('click', openShareModal);
+      if (closeShareModalBtn) closeShareModalBtn.addEventListener('click', closeShareModal);
+      if (copyShareLinkBtn) copyShareLinkBtn.addEventListener('click', copyShareLink);
+      if (shareModal) {
+        shareModal.addEventListener('click', (e) => {
+          if (e.target === shareModal) closeShareModal();
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && !shareModal.classList.contains('hidden')) closeShareModal();
+        });
+      }
+      if (shareLinkInput) {
+        shareLinkInput.addEventListener('focus', () => shareLinkInput.select());
+        shareLinkInput.addEventListener('click', () => shareLinkInput.select());
+      }
+
+      const dismissShareWarningBtn = document.getElementById('btn-dismiss-share-warning');
+      if (dismissShareWarningBtn) {
+        dismissShareWarningBtn.addEventListener('click', () => {
+          const banner = document.getElementById('share-warning-banner');
+          if (banner) banner.classList.add('hidden');
+        });
+      }
 
       if (closeConfirmDeleteModalBtn) closeConfirmDeleteModalBtn.addEventListener('click', closeDeleteConfirm);
       if (cancelDeleteBtn) cancelDeleteBtn.addEventListener('click', closeDeleteConfirm);
@@ -2134,12 +2420,24 @@
       safeLoadLocalStorage();
       loadSavedRotundas();
 
-      const lastRotunda = [...savedRotundas].sort((a, b) => b.timestamp - a.timestamp)[0];
-      if (lastRotunda && lastRotunda.state) {
-        assignStateFields(lastRotunda.state);
-        currentRotundaId = lastRotunda.id;
+      const shareParam = new URLSearchParams(location.search).get('share');
+      const sharedPayload = shareParam ? decodeShareConfig(shareParam) : null;
+      let sharedWarnings = [];
+
+      if (sharedPayload) {
+        const validated = validateSharedState(sharedPayload);
+        sharedWarnings = validated.warnings;
+        assignStateFields(validated.state);
+        appState.zoom = validated.state.zoom;
+        currentRotundaId = null;
       } else {
-        initLegsState();
+        const lastRotunda = [...savedRotundas].sort((a, b) => b.timestamp - a.timestamp)[0];
+        if (lastRotunda && lastRotunda.state) {
+          assignStateFields(lastRotunda.state);
+          currentRotundaId = lastRotunda.id;
+        } else {
+          initLegsState();
+        }
       }
 
       initMap();
@@ -2147,7 +2445,15 @@
       bindUIControls();
       renderPerLegUIControls();
       renderSavedRotundas();
-      markSnapshotAsSaved();
+
+      if (sharedPayload) {
+        // Leave the snapshot unmarked so Save stays enabled and the viewer can
+        // keep the rotunda they were sent.
+        lastSavedSnapshot = null;
+        showSharedConfigWarnings(sharedWarnings);
+      } else {
+        markSnapshotAsSaved();
+      }
       refreshSaveButtonState();
 
       lastAnimTime = performance.now();
