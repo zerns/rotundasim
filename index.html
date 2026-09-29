@@ -2101,9 +2101,10 @@
       if (lastRotunda && lastRotunda.state) {
         assignStateFields(lastRotunda.state);
         currentRotundaId = lastRotunda.id;
+      } else {
+        initLegsState();
       }
 
-      initLegsState();
       initMap();
       initCanvas();
       bindUIControls();
