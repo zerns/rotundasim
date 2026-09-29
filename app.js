@@ -1072,16 +1072,6 @@
             </div>
           </div>
 
-          <div class="space-y-1 bg-slate-900/40 p-2 rounded-lg border border-slate-700/40">
-            <div class="flex justify-between text-[10px]">
-              <span class="text-amber-400 font-semibold flex items-center gap-1">
-                <i class="fa-solid fa-car-side text-[9px]"></i> Inflow Demand Level
-              </span>
-              <span id="val-leg-demand-${idx}" class="font-mono font-bold text-amber-300">${(spawnWeightVal * 100).toFixed(0)}%</span>
-            </div>
-            <input id="slider-leg-demand-${idx}" type="range" min="0.1" max="3.0" step="0.1" value="${spawnWeightVal}" class="w-full accent-amber-500 bg-slate-700 h-1.5 rounded-lg">
-          </div>
-
           <div class="space-y-1">
             <label class="text-[10px] text-slate-400 block">Primary Destination Route</label>
             <select id="select-leg-exit-${idx}" class="w-full bg-slate-900 border border-slate-700 rounded text-[11px] p-1 text-slate-200">
@@ -1120,6 +1110,16 @@
             <button id="btn-flow-twoway-${idx}" class="py-1 text-[10px] font-semibold rounded border ${leg.flowMode === 'two-way' ? 'bg-sky-600/40 border-sky-500 text-sky-300' : 'bg-slate-900 border-slate-700 text-slate-400'}">Two-Way</button>
             <button id="btn-flow-inbound-${idx}" class="py-1 text-[10px] font-semibold rounded border ${leg.flowMode === 'inbound-only' ? 'bg-emerald-600/40 border-emerald-500 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'}">Inbound</button>
             <button id="btn-flow-outbound-${idx}" class="py-1 text-[10px] font-semibold rounded border ${leg.flowMode === 'outbound-only' ? 'bg-amber-600/40 border-amber-500 text-amber-300' : 'bg-slate-900 border-slate-700 text-slate-400'}">Outbound</button>
+          </div>
+
+          <div class="space-y-1 bg-slate-900/40 p-2 rounded-lg border border-slate-700/40">
+            <div class="flex justify-between text-[10px]">
+              <span class="text-amber-400 font-semibold flex items-center gap-1">
+                <i class="fa-solid fa-car-side text-[9px]"></i> Inflow Demand Level
+              </span>
+              <span id="val-leg-demand-${idx}" class="font-mono font-bold text-amber-300">${(spawnWeightVal * 100).toFixed(0)}%</span>
+            </div>
+            <input id="slider-leg-demand-${idx}" type="range" min="0.1" max="3.0" step="0.1" value="${spawnWeightVal}" class="w-full accent-amber-500 bg-slate-700 h-1.5 rounded-lg">
           </div>
         `;
 
