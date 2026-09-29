@@ -339,6 +339,15 @@
       if (label) label.textContent = `${leg.lengthMeters} m`;
     }
 
+    function updateLegAngleUI(idx) {
+      const leg = appState.legs[idx];
+      if (!leg) return;
+      const slider = document.getElementById(`slider-leg-angle-${idx}`);
+      const label = document.getElementById(`val-leg-angle-${idx}`);
+      if (slider) slider.value = leg.angleOffset;
+      if (label) label.textContent = `${leg.angleOffset}°`;
+    }
+
     function updateLegWidthUI(idx) {
       const leg = appState.legs[idx];
       if (!leg) return;
@@ -365,13 +374,24 @@
 
       function onWindowMouseMove(e) {
         if (draggingLegIdx === null) return;
+        const leg = appState.legs[draggingLegIdx];
+        if (!leg) return;
         const pt = eventToContainerPoint(e);
         const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
         const mouseLatLng = map.containerPointToLatLng([pt.x, pt.y]);
         const meters = map.distance(centerLatLng, mouseLatLng);
-        const clamped = Math.max(40, Math.min(250, Math.round(meters / 5) * 5));
-        appState.legs[draggingLegIdx].lengthMeters = clamped;
+        leg.lengthMeters = Math.max(40, Math.min(250, Math.round(meters / 5) * 5));
         updateLegLengthUI(draggingLegIdx);
+
+        // atan2 is unstable within a few px of center, where length is clamped anyway.
+        const centerPx = map.latLngToContainerPoint(centerLatLng);
+        const nearCenter = Math.hypot(pt.x - centerPx.x, pt.y - centerPx.y) < 12;
+        if (!e.shiftKey && !nearCenter) {
+          const rawOffset = pointerAngleDeg(pt) - leg.baseAngle - appState.globalAngleOffset;
+          leg.angleOffset = Math.round(((rawOffset + 180) % 360 + 360) % 360 - 180);
+          updateLegAngleUI(draggingLegIdx);
+        }
+
         requestAnimationFrame(render);
       }
 
