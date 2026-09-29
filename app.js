@@ -141,6 +141,11 @@
     let draggingLegIdx = null;
     let draggingWidthLegIdx = null;
     let rotundaSelected = false;
+    let rotateHandlePoint = null;
+    let draggingRotation = false;
+    let rotationStartPointerDeg = 0;
+    let rotationStartOffset = 0;
+    let suppressNextMapClick = false;
 
     function safeLoadLocalStorage() {
       try {
@@ -260,6 +265,11 @@
       });
 
       map.on('click', function(e) {
+        if (suppressNextMapClick) {
+          suppressNextMapClick = false;
+          return;
+        }
+
         if (appState.clickToMove) {
           appState.centerLat = e.latlng.lat;
           appState.centerLng = e.latlng.lng;
@@ -308,6 +318,18 @@
       return null;
     }
 
+    function isOnRotateHandle(px, py) {
+      if (!rotundaSelected || !rotateHandlePoint) return false;
+      return Math.hypot(rotateHandlePoint.x - px, rotateHandlePoint.y - py) <= 10;
+    }
+
+    function updateGlobalAngleUI() {
+      const slider = document.getElementById('slider-global-angle');
+      const val = document.getElementById('val-global-angle');
+      if (slider) slider.value = appState.globalAngleOffset;
+      if (val) val.textContent = `${appState.globalAngleOffset}°`;
+    }
+
     function updateLegLengthUI(idx) {
       const leg = appState.legs[idx];
       if (!leg) return;
@@ -334,6 +356,7 @@
       const container = map.getContainer();
       let hoveringLegIdx = null;
       let hoveringWidthLegIdx = null;
+      let hoveringRotation = false;
 
       function eventToContainerPoint(e) {
         const rect = container.getBoundingClientRect();
@@ -394,10 +417,36 @@
         requestAnimationFrame(render);
       }
 
+      function pointerAngleDeg(pt) {
+        const centerPx = map.latLngToContainerPoint(L.latLng(appState.centerLat, appState.centerLng));
+        return (Math.atan2(pt.x - centerPx.x, -(pt.y - centerPx.y)) * 180) / Math.PI;
+      }
+
+      function onWindowRotationMouseMove(e) {
+        if (!draggingRotation) return;
+        const delta = pointerAngleDeg(eventToContainerPoint(e)) - rotationStartPointerDeg;
+        const raw = rotationStartOffset + delta;
+        appState.globalAngleOffset = Math.round(((raw + 180) % 360 + 360) % 360 - 180);
+        updateGlobalAngleUI();
+        requestAnimationFrame(render);
+      }
+
+      function onWindowRotationMouseUp() {
+        if (!draggingRotation) return;
+        draggingRotation = false;
+        suppressNextMapClick = true;
+        if (!hoveringRotation) map.dragging.enable();
+        container.style.cursor = hoveringRotation ? 'grab' : '';
+        window.removeEventListener('mousemove', onWindowRotationMouseMove);
+        window.removeEventListener('mouseup', onWindowRotationMouseUp);
+        saveStateToLocalStorage();
+        requestAnimationFrame(render);
+      }
+
       // Proactively disable map panning while hovering a handle, so Leaflet's
       // own mousedown listener (registered before ours) never starts a pan.
       container.addEventListener('mousemove', (e) => {
-        if (draggingLegIdx !== null || draggingWidthLegIdx !== null) return;
+        if (draggingLegIdx !== null || draggingWidthLegIdx !== null || draggingRotation) return;
         const pt = eventToContainerPoint(e);
         const widthIdx = findNearbyWidthHandle(pt.x, pt.y);
         const idx = widthIdx === null ? findNearbyLegTip(pt.x, pt.y) : null;
@@ -407,10 +456,14 @@
         if (idx !== hoveringLegIdx) {
           hoveringLegIdx = idx;
         }
+        hoveringRotation = widthIdx === null && idx === null && isOnRotateHandle(pt.x, pt.y);
         if (widthIdx !== null) {
           map.dragging.disable();
           container.style.cursor = 'ew-resize';
         } else if (idx !== null) {
+          map.dragging.disable();
+          container.style.cursor = 'grab';
+        } else if (hoveringRotation) {
           map.dragging.disable();
           container.style.cursor = 'grab';
         } else {
@@ -420,11 +473,24 @@
       });
 
       container.addEventListener('mousedown', (e) => {
+        // A drag that ends off-map never emits the trailing click, so clear any
+        // stale suppression here rather than swallowing the next real click.
+        suppressNextMapClick = false;
         if (hoveringWidthLegIdx !== null) {
           draggingWidthLegIdx = hoveringWidthLegIdx;
           container.style.cursor = 'ew-resize';
           window.addEventListener('mousemove', onWindowWidthMouseMove);
           window.addEventListener('mouseup', onWindowWidthMouseUp);
+          return;
+        }
+        if (hoveringRotation) {
+          const pt = eventToContainerPoint(e);
+          draggingRotation = true;
+          rotationStartPointerDeg = pointerAngleDeg(pt);
+          rotationStartOffset = appState.globalAngleOffset;
+          container.style.cursor = 'grabbing';
+          window.addEventListener('mousemove', onWindowRotationMouseMove);
+          window.addEventListener('mouseup', onWindowRotationMouseUp);
           return;
         }
         if (hoveringLegIdx === null) return;
@@ -596,7 +662,7 @@
       if (sliderAngle) {
         sliderAngle.addEventListener('input', (e) => {
           appState.globalAngleOffset = parseInt(e.target.value, 10);
-          document.getElementById('val-global-angle').textContent = `${appState.globalAngleOffset}°`;
+          updateGlobalAngleUI();
           requestAnimationFrame(render);
         });
       }
@@ -1291,6 +1357,7 @@
       // 1. Draw Approach Road Legs
       legTipPoints = [];
       widthHandlePoints = [];
+      rotateHandlePoint = null;
       appState.legs.forEach((leg, legIdx) => {
         const totalAngleDeg = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset) % 360;
         const rad = (totalAngleDeg * Math.PI) / 180;
@@ -1431,6 +1498,31 @@
       ctx.arc(centerPx.x, centerPx.y, Math.max(islandPx - 6, 2), 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(6, 78, 59, 0.6)';
       ctx.fill();
+
+      // Rotation Drag Handle (only when rotunda is selected)
+      if (rotundaSelected) {
+        const rotateRad = (appState.globalAngleOffset * Math.PI) / 180;
+        const handleDist = outerPx + 18;
+        rotateHandlePoint = {
+          x: centerPx.x + Math.sin(rotateRad) * handleDist,
+          y: centerPx.y - Math.cos(rotateRad) * handleDist
+        };
+
+        ctx.beginPath();
+        ctx.moveTo(centerPx.x + Math.sin(rotateRad) * outerPx, centerPx.y - Math.cos(rotateRad) * outerPx);
+        ctx.lineTo(rotateHandlePoint.x, rotateHandlePoint.y);
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(rotateHandlePoint.x, rotateHandlePoint.y, draggingRotation ? 8 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = draggingRotation ? '#fbbf24' : 'rgba(251, 191, 36, 0.85)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.fill();
+        ctx.stroke();
+      }
 
       // Crosshair Center
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
