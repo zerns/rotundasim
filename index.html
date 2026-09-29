@@ -130,7 +130,15 @@
             <h3 class="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
               <i class="fa-solid fa-circle-dot"></i> Global Dimensions
             </h3>
-            
+
+            <!-- Move Center Toggle -->
+            <div class="flex items-center justify-between text-xs text-slate-300 pb-1 border-b border-slate-700/60">
+              <span class="flex items-center gap-1.5" title="When on, click a point on the map to move the rotunda's center there">
+                <i class="fa-solid fa-location-crosshairs text-sky-400"></i> Click Map to Move Rotunda
+              </span>
+              <input type="checkbox" id="toggle-click-move" class="accent-sky-500 w-4 h-4 rounded cursor-pointer">
+            </div>
+
             <!-- Outer Radius -->
             <div class="space-y-1">
               <div class="flex justify-between text-xs">
@@ -193,12 +201,8 @@
               </div>
             </div>
 
-            <!-- Move Center & Guide Line Options -->
+            <!-- Guide Line Options -->
             <div class="pt-2 border-t border-slate-700/60 space-y-2">
-              <button id="btn-toggle-click-move" class="w-full py-1.5 px-3 bg-slate-700/80 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors">
-                <i class="fa-solid fa-location-crosshairs text-sky-400"></i> <span id="click-move-btn-text">Enable Click to Move Center</span>
-              </button>
-
               <div class="flex items-center justify-between text-xs text-slate-300 pt-1">
                 <span>Show Guide Lines</span>
                 <input type="checkbox" id="toggle-guide-lines" checked class="accent-sky-500 w-4 h-4 rounded cursor-pointer">
@@ -1010,21 +1014,12 @@
       }
 
       // Enable Click-to-Move Toggle
-      const clickMoveBtn = document.getElementById('btn-toggle-click-move');
+      const clickMoveToggle = document.getElementById('toggle-click-move');
       const clickMoveBanner = document.getElementById('click-move-banner');
-      const clickMoveBtnText = document.getElementById('click-move-btn-text');
-      if (clickMoveBtn) {
-        clickMoveBtn.addEventListener('click', () => {
-          appState.clickToMove = !appState.clickToMove;
-          if (appState.clickToMove) {
-            clickMoveBanner.classList.remove('hidden');
-            clickMoveBtn.className = "w-full py-1.5 px-3 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors shadow-lg shadow-sky-600/20";
-            if (clickMoveBtnText) clickMoveBtnText.textContent = "Placement Mode Active (Click Map)";
-          } else {
-            clickMoveBanner.classList.add('hidden');
-            clickMoveBtn.className = "w-full py-1.5 px-3 bg-slate-700/80 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors";
-            if (clickMoveBtnText) clickMoveBtnText.textContent = "Enable Click to Move Center";
-          }
+      if (clickMoveToggle) {
+        clickMoveToggle.addEventListener('change', (e) => {
+          appState.clickToMove = e.target.checked;
+          clickMoveBanner.classList.toggle('hidden', !appState.clickToMove);
         });
       }
 
