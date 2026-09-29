@@ -2,6 +2,8 @@
 
 Precision geometric roundabout alignment & microscopic traffic simulator. Browser-based, GIS-backed, single HTML page + JS.
 
+> **Disclaimer**: not based on real traffic engineering studies or data. It's a simplified what-if visualizer for exploring how a rotunda layout might look/behave at a location — not a validated traffic model.
+
 ## Features
 
 - **GIS map base**: Leaflet map, location search. Only Esri Satellite tile layer supported (Carto Light/Dark, OSM Standard buttons present but not supported).
