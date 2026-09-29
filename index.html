@@ -215,6 +215,13 @@
               <!-- Populated dynamically -->
             </div>
           </div>
+
+          <!-- Floating Save Bar -->
+          <div class="sticky bottom-0 -mx-4 -mb-4 px-4 pb-4 pt-3 glass-panel border-t border-sky-500/30 shadow-2xl">
+            <button id="btn-open-save-modal" disabled class="w-full py-2 px-3 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sky-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-sky-600/20">
+              <i class="fa-solid fa-floppy-disk"></i> <span id="save-btn-label">Save Current Setup</span>
+            </button>
+          </div>
         </div>
 
         <!-- TAB 2: TRAFFIC FLOW & RULES -->
@@ -287,19 +294,6 @@
 
         <!-- TAB 3: SAVED ROTUNDAS -->
         <div id="tab-content-saved" class="hidden space-y-4">
-          <!-- Save New Configuration Action Box -->
-          <div class="p-3.5 bg-slate-800/80 rounded-xl border border-sky-500/30 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
-                <i class="fa-solid fa-floppy-disk"></i> Save Current Rotunda
-              </h3>
-            </div>
-            <p class="text-[11px] text-slate-400">Capture current geometry, lane counts, per-leg alignments, traffic rules, and map position.</p>
-            <button id="btn-open-save-modal" class="w-full py-2 px-3 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-sky-600/20">
-              <i class="fa-solid fa-plus"></i> Save Current Setup
-            </button>
-          </div>
-
           <!-- Saved Rotundas Library -->
           <div class="space-y-3">
             <div class="flex items-center justify-between">
@@ -422,6 +416,75 @@
     </div>
   </div>
 
+  <!-- Update vs Create New Modal -->
+  <div id="save-mode-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[1000] hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-floppy-disk text-sky-400"></i> Save Changes
+        </h3>
+        <button id="btn-close-save-mode-modal" class="text-slate-400 hover:text-slate-200 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-300">A rotunda is currently loaded. Update it with your changes, or save this as a new rotunda?</p>
+      <div class="flex flex-col gap-2 pt-2">
+        <button id="btn-save-mode-update" class="w-full px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs rounded-lg transition-colors">
+          Update This Rotunda
+        </button>
+        <button id="btn-save-mode-new" class="w-full px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg transition-colors">
+          Save as New
+        </button>
+        <button id="btn-save-mode-cancel" class="w-full px-4 py-2 bg-transparent hover:bg-slate-800 text-slate-400 text-xs rounded-lg transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="confirm-delete-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[1000] hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-trash-can text-rose-400"></i> Delete Saved Rotunda
+        </h3>
+        <button id="btn-close-confirm-delete-modal" class="text-slate-400 hover:text-slate-200 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <p id="confirm-delete-text" class="text-xs text-slate-300">Delete this saved rotunda? This cannot be undone.</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="btn-cancel-delete" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition-colors">
+          Cancel
+        </button>
+        <button id="btn-confirm-delete" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-lg transition-colors">
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Limit Reached Modal -->
+  <div id="limit-reached-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[1000] hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> Save Limit Reached
+        </h3>
+        <button id="btn-close-limit-modal" class="text-slate-400 hover:text-slate-200 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-300">You can only save up to 5 rotundas. Delete a saved rotunda before creating a new one.</p>
+      <div class="flex justify-end pt-2">
+        <button id="btn-ok-limit" class="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs rounded-lg transition-colors">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const DEFAULT_LAT = 14.545101;
     const DEFAULT_LNG = 121.045733;
@@ -457,6 +520,45 @@
     ];
 
     let savedRotundas = [];
+    let currentRotundaId = null;
+    let lastSavedSnapshot = null;
+
+    function buildStateSnapshot() {
+      return {
+        centerLat: appState.centerLat,
+        centerLng: appState.centerLng,
+        zoom: map ? map.getZoom() : appState.zoom,
+        outerRadiusMeters: appState.outerRadiusMeters,
+        islandRadiusMeters: appState.islandRadiusMeters,
+        ringLanes: appState.ringLanes,
+        legCount: appState.legCount,
+        globalAngleOffset: appState.globalAngleOffset,
+        trafficStandard: appState.trafficStandard,
+        spawnRatePerMin: appState.spawnRatePerMin,
+        maxSpeedKmH: appState.maxSpeedKmH,
+        selectedScenario: appState.selectedScenario,
+        legs: appState.legs
+      };
+    }
+
+    function markSnapshotAsSaved() {
+      lastSavedSnapshot = JSON.stringify(buildStateSnapshot());
+    }
+
+    function isDirty() {
+      return JSON.stringify(buildStateSnapshot()) !== lastSavedSnapshot;
+    }
+
+    function refreshSaveButtonState() {
+      const btn = document.getElementById('btn-open-save-modal');
+      const label = document.getElementById('save-btn-label');
+      if (!btn) return;
+      const dirty = isDirty();
+      btn.disabled = !dirty;
+      if (label) {
+        label.textContent = currentRotundaId ? 'Save Changes' : 'Save Current Setup';
+      }
+    }
 
     function loadSavedRotundas() {
       try {
@@ -861,6 +963,25 @@
       const saveNameInput = document.getElementById('save-rotunda-name');
       const saveErrorMsg = document.getElementById('save-modal-error');
 
+      const saveModeModal = document.getElementById('save-mode-modal');
+      const closeSaveModeModalBtn = document.getElementById('btn-close-save-mode-modal');
+      const saveModeUpdateBtn = document.getElementById('btn-save-mode-update');
+      const saveModeNewBtn = document.getElementById('btn-save-mode-new');
+      const saveModeCancelBtn = document.getElementById('btn-save-mode-cancel');
+
+      const confirmDeleteModal = document.getElementById('confirm-delete-modal');
+      const confirmDeleteText = document.getElementById('confirm-delete-text');
+      const closeConfirmDeleteModalBtn = document.getElementById('btn-close-confirm-delete-modal');
+      const cancelDeleteBtn = document.getElementById('btn-cancel-delete');
+      const confirmDeleteBtn = document.getElementById('btn-confirm-delete');
+      let pendingDeleteId = null;
+
+      const limitReachedModal = document.getElementById('limit-reached-modal');
+      const closeLimitModalBtn = document.getElementById('btn-close-limit-modal');
+      const okLimitBtn = document.getElementById('btn-ok-limit');
+
+      const MAX_SAVED_ROTUNDAS = 5;
+
       function openModal() {
         if (!saveModal || !saveNameInput) return;
         saveNameInput.value = '';
@@ -873,9 +994,93 @@
         if (saveModal) saveModal.classList.add('hidden');
       }
 
-      if (openSaveModalBtn) openSaveModalBtn.addEventListener('click', openModal);
+      function closeSaveModeModal() {
+        if (saveModeModal) saveModeModal.classList.add('hidden');
+      }
+
+      function openLimitReachedModal() {
+        if (limitReachedModal) limitReachedModal.classList.remove('hidden');
+      }
+
+      function closeLimitReachedModal() {
+        if (limitReachedModal) limitReachedModal.classList.add('hidden');
+      }
+
+      function openDeleteConfirm(id, name) {
+        pendingDeleteId = id;
+        if (confirmDeleteText) {
+          confirmDeleteText.textContent = `Delete "${name}"? This cannot be undone.`;
+        }
+        if (confirmDeleteModal) confirmDeleteModal.classList.remove('hidden');
+      }
+
+      function closeDeleteConfirm() {
+        pendingDeleteId = null;
+        if (confirmDeleteModal) confirmDeleteModal.classList.add('hidden');
+      }
+
+      window.openDeleteConfirm = openDeleteConfirm;
+
+      function handleSaveClick() {
+        if (openSaveModalBtn && openSaveModalBtn.disabled) return;
+
+        const currentEntry = currentRotundaId ? savedRotundas.find(r => r.id === currentRotundaId) : null;
+
+        if (currentEntry && !currentEntry.isDefault) {
+          if (saveModeModal) saveModeModal.classList.remove('hidden');
+          return;
+        }
+
+        if (savedRotundas.length >= MAX_SAVED_ROTUNDAS) {
+          openLimitReachedModal();
+          return;
+        }
+
+        openModal();
+      }
+
+      if (openSaveModalBtn) openSaveModalBtn.addEventListener('click', handleSaveClick);
       if (closeSaveModalBtn) closeSaveModalBtn.addEventListener('click', closeModal);
       if (cancelSaveBtn) cancelSaveBtn.addEventListener('click', closeModal);
+
+      if (closeSaveModeModalBtn) closeSaveModeModalBtn.addEventListener('click', closeSaveModeModal);
+      if (saveModeCancelBtn) saveModeCancelBtn.addEventListener('click', closeSaveModeModal);
+      if (saveModeUpdateBtn) {
+        saveModeUpdateBtn.addEventListener('click', () => {
+          closeSaveModeModal();
+          updateCurrentRotunda();
+        });
+      }
+      if (saveModeNewBtn) {
+        saveModeNewBtn.addEventListener('click', () => {
+          closeSaveModeModal();
+          if (savedRotundas.length >= MAX_SAVED_ROTUNDAS) {
+            openLimitReachedModal();
+            return;
+          }
+          openModal();
+        });
+      }
+
+      if (closeLimitModalBtn) closeLimitModalBtn.addEventListener('click', closeLimitReachedModal);
+      if (okLimitBtn) okLimitBtn.addEventListener('click', closeLimitReachedModal);
+
+      if (closeConfirmDeleteModalBtn) closeConfirmDeleteModalBtn.addEventListener('click', closeDeleteConfirm);
+      if (cancelDeleteBtn) cancelDeleteBtn.addEventListener('click', closeDeleteConfirm);
+      if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', () => {
+          if (!pendingDeleteId) return;
+          savedRotundas = savedRotundas.filter(r => r.id !== pendingDeleteId);
+          saveSavedRotundasToStorage();
+          if (currentRotundaId === pendingDeleteId) {
+            currentRotundaId = null;
+            lastSavedSnapshot = null;
+            refreshSaveButtonState();
+          }
+          closeDeleteConfirm();
+          renderSavedRotundas();
+        });
+      }
 
       if (saveNameInput) {
         saveNameInput.addEventListener('keydown', (e) => {
@@ -885,6 +1090,18 @@
       }
 
       if (confirmSaveBtn) confirmSaveBtn.addEventListener('click', confirmSave);
+
+      function updateCurrentRotunda() {
+        const entry = savedRotundas.find(r => r.id === currentRotundaId);
+        if (!entry) return;
+        entry.state = buildStateSnapshot();
+        entry.state.legs = JSON.parse(JSON.stringify(appState.legs));
+        entry.timestamp = Date.now();
+        saveSavedRotundasToStorage();
+        renderSavedRotundas();
+        markSnapshotAsSaved();
+        refreshSaveButtonState();
+      }
 
       function confirmSave() {
         const name = saveNameInput.value.trim();
@@ -896,30 +1113,26 @@
           return;
         }
 
+        if (savedRotundas.length >= MAX_SAVED_ROTUNDAS) {
+          closeModal();
+          openLimitReachedModal();
+          return;
+        }
+
         const newRotunda = {
           id: 'rotunda_' + Date.now(),
           name: name,
           timestamp: Date.now(),
           isDefault: false,
-          state: {
-            centerLat: appState.centerLat,
-            centerLng: appState.centerLng,
-            zoom: map ? map.getZoom() : appState.zoom,
-            outerRadiusMeters: appState.outerRadiusMeters,
-            islandRadiusMeters: appState.islandRadiusMeters,
-            ringLanes: appState.ringLanes,
-            legCount: appState.legCount,
-            globalAngleOffset: appState.globalAngleOffset,
-            trafficStandard: appState.trafficStandard,
-            spawnRatePerMin: appState.spawnRatePerMin,
-            maxSpeedKmH: appState.maxSpeedKmH,
-            selectedScenario: appState.selectedScenario,
-            legs: JSON.parse(JSON.stringify(appState.legs))
-          }
+          state: buildStateSnapshot()
         };
+        newRotunda.state.legs = JSON.parse(JSON.stringify(appState.legs));
 
         savedRotundas.unshift(newRotunda);
         saveSavedRotundasToStorage();
+        currentRotundaId = newRotunda.id;
+        markSnapshotAsSaved();
+        refreshSaveButtonState();
         renderSavedRotundas();
         closeModal();
       }
@@ -1040,7 +1253,7 @@
           const id = btn.getAttribute('data-load-id');
           const target = savedRotundas.find(r => r.id === id);
           if (target && target.state) {
-            applyRotundaConfig(target.state);
+            applyRotundaConfig(target.state, target.id);
           }
         });
       });
@@ -1049,9 +1262,8 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const id = btn.getAttribute('data-delete-id');
-          savedRotundas = savedRotundas.filter(r => r.id !== id);
-          saveSavedRotundasToStorage();
-          renderSavedRotundas();
+          const target = savedRotundas.find(r => r.id === id);
+          openDeleteConfirm(id, target ? target.name : '');
         });
       });
     }
@@ -1076,10 +1288,11 @@
       }
     }
 
-    function applyRotundaConfig(state) {
+    function applyRotundaConfig(state, rotundaId) {
       if (!state) return;
 
       assignStateFields(state);
+      currentRotundaId = rotundaId ?? null;
 
       vehicleAgents = [];
 
@@ -1093,6 +1306,8 @@
       syncUIFromState();
       renderPerLegUIControls();
       saveStateToLocalStorage();
+      markSnapshotAsSaved();
+      refreshSaveButtonState();
       requestAnimationFrame(render);
     }
 
@@ -1874,6 +2089,7 @@
         updateSimulation(dt);
       }
       render();
+      refreshSaveButtonState();
       requestAnimationFrame(animate);
     }
 
@@ -1884,6 +2100,7 @@
       const lastRotunda = [...savedRotundas].sort((a, b) => b.timestamp - a.timestamp)[0];
       if (lastRotunda && lastRotunda.state) {
         assignStateFields(lastRotunda.state);
+        currentRotundaId = lastRotunda.id;
       }
 
       initLegsState();
@@ -1892,6 +2109,8 @@
       bindUIControls();
       renderPerLegUIControls();
       renderSavedRotundas();
+      markSnapshotAsSaved();
+      refreshSaveButtonState();
 
       lastAnimTime = performance.now();
       requestAnimationFrame(animate);
