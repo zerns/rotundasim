@@ -150,6 +150,7 @@
     let draggingLegIdx = null;
     let draggingWidthLegIdx = null;
     let rotundaSelected = false;
+    let selectedLegIdx = null;
     let rotateHandlePoint = null;
     let draggingRotation = false;
     let rotationStartPointerDeg = 0;
@@ -508,7 +509,17 @@
         }
 
         const pt = map.latLngToContainerPoint(e.latlng);
+        const hitLeg = findLegAtPoint(pt.x, pt.y);
         rotundaSelected = isPointOnRotunda(pt.x, pt.y);
+
+        if (hitLeg !== null) {
+          selectedLegIdx = hitLeg;
+          revealLegControlCard(hitLeg);
+        } else if (!rotundaSelected) {
+          selectedLegIdx = null;
+          renderPerLegUIControls();
+        }
+
         updateGlobalLegWidthVisibility();
         requestAnimationFrame(render);
       });
@@ -773,14 +784,12 @@
       return Math.max(pxDistance, 2);
     }
 
-    function isPointOnRotunda(px, py) {
+    function findLegAtPoint(px, py) {
       const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
       const centerPx = map.latLngToContainerPoint(centerLatLng);
-      const outerPx = getPixelRadius(centerLatLng, appState.outerRadiusMeters);
 
-      if (Math.hypot(px - centerPx.x, py - centerPx.y) <= outerPx) return true;
-
-      for (const leg of appState.legs) {
+      for (let i = 0; i < appState.legs.length; i++) {
+        const leg = appState.legs[i];
         const totalAngleDeg = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset) % 360;
         const rad = (totalAngleDeg * Math.PI) / 180;
         const legWidthPx = getPixelRadius(centerLatLng, leg.widthMeters);
@@ -792,11 +801,30 @@
         const localY = -dx * Math.sin(rad) + dy * Math.cos(rad);
 
         if (localX >= -legWidthPx / 2 && localX <= legWidthPx / 2 && localY <= 0 && localY >= -legLengthPx) {
-          return true;
+          return i;
         }
       }
 
-      return false;
+      return null;
+    }
+
+    function isPointOnRotunda(px, py) {
+      const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
+      const centerPx = map.latLngToContainerPoint(centerLatLng);
+      const outerPx = getPixelRadius(centerLatLng, appState.outerRadiusMeters);
+
+      if (Math.hypot(px - centerPx.x, py - centerPx.y) <= outerPx) return true;
+
+      return findLegAtPoint(px, py) !== null;
+    }
+
+    function revealLegControlCard(idx) {
+      const geomTabBtn = document.getElementById('tab-btn-geom');
+      if (geomTabBtn) geomTabBtn.click();
+      renderPerLegUIControls();
+      const container = document.getElementById('per-leg-controls-container');
+      const card = container && container.children[idx];
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function bindUIControls() {
@@ -1535,9 +1563,12 @@
       if (!container) return;
       container.innerHTML = '';
 
+      if (selectedLegIdx !== null && selectedLegIdx >= appState.legs.length) selectedLegIdx = null;
+
       appState.legs.forEach((leg, idx) => {
         const legCard = document.createElement('div');
-        legCard.className = "p-2.5 bg-slate-800/80 rounded-lg border border-slate-700/70 space-y-2.5";
+        legCard.className = "p-2.5 bg-slate-800/80 rounded-lg border space-y-2.5 transition-colors " +
+          (idx === selectedLegIdx ? "border-sky-500 ring-2 ring-sky-500/50" : "border-slate-700/70");
 
         const currentAngle = (leg.baseAngle + leg.angleOffset + appState.globalAngleOffset + 360) % 360;
         const spawnWeightVal = leg.spawnWeight !== undefined ? leg.spawnWeight : 1.0;
@@ -1706,6 +1737,12 @@
         // Asphalt Road
         ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
         ctx.fillRect(-legWidthPx / 2, -legLengthPx, legWidthPx, legLengthPx);
+
+        if (legIdx === selectedLegIdx) {
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(-legWidthPx / 2, -legLengthPx, legWidthPx, legLengthPx);
+        }
 
         // Curb Lines
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
