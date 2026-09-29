@@ -20,7 +20,7 @@ Precision geometric roundabout alignment & microscopic traffic simulator. Browse
 
 ## Stack
 
-Static HTML + vanilla JS (app.js). Tailwind CSS (CDN), Leaflet.js (CDN), Font Awesome (CDN). No build step, no backend — open [index.html](index.html) in browser.
+Static HTML + vanilla JS (app.js). Tailwind CSS (precompiled static `styles.css`, regenerate with `npx tailwindcss@3 -i ./input.css -o ./styles.css --minify` after changing classes — see `tailwind.config.js`), Leaflet.js (CDN), Font Awesome (CDN). No build step at deploy time, no backend — open [index.html](index.html) in browser.
 
 ## Files
 
