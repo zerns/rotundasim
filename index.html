@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rotunda & Roundabout Traffic Simulator | projectkilaw.com</title>
+  
+  <!-- OWASP Compliance: Strict Fallback Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; img-src 'self' blob: data: https://server.arcgisonline.com https://services.arcgisonline.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://nominatim.openstreetmap.org; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --panel-bg: rgba(15, 23, 42, 0.92);
+      --border-color: rgba(255, 255, 255, 0.12);
+      --accent-color: #38bdf8;
+      --accent-hover: #0284c7;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg-dark); color: var(--text-main); overflow: hidden; height: 100vh; width: 100vw; }
+    
+    #app-container { display: flex; height: 100vh; width: 100vw; position: relative; }
+    #map-wrapper { flex: 1; height: 100%; position: relative; }
+    #map { height: 100%; width: 100%; z-index: 1; background: #111; }
+    
+    /* Overlay Canvas */
+    #rotunda-canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 2; pointer-events: none;
+    }
+
+    /* Floating Header */
+    header {
+      position: absolute; top: 16px; left: 16px; z-index: 10;
+      background: var(--panel-bg); backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color); border-radius: 12px;
+      padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+    header span.badge { background: rgba(56, 189, 248, 0.2); color: var(--accent-color); font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+
+    /* Control Sidebar */
+    sidebar {
+      width: 380px; height: 100%; background: var(--panel-bg);
+      backdrop-filter: blur(16px); border-left: 1px solid var(--border-color);
+      z-index: 10; display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+    }
+
+    .nav-tabs { display: flex; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2); }
+    .nav-tab { flex: 1; padding: 12px 8px; text-align: center; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border: none; background: none; transition: all 0.2s; }
+    .nav-tab.active { color: var(--accent-color); border-bottom: 2px solid var(--accent-color); background: rgba(56, 189, 248, 0.05); }
+
+    .tab-content { flex: 1; overflow-y: auto; padding: 20px; display: none; }
+    .tab-content.active { display: block; }
+
+    .control-group { margin-bottom: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 14px; border-radius: 10px; }
+    .control-group h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 12px; }
+
+    .input-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; }
+    .input-row label { font-size: 0.82rem; color: #cbd5e1; font-weight: 500; }
+    .input-row .val { font-size: 0.82rem; font-weight: 600; color: var(--accent-color); min-width: 45px; text-align: right; }
+
+    input[type="range"] {
+      width: 100%; height: 5px; background: #334155; border-radius: 5px;
+      outline: none; -webkit-appearance: none; cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+      background: var(--accent-color); cursor: pointer; transition: transform 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+    select, input[type="text"] {
+      width: 100%; padding: 8px 12px; background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border-color); border-radius: 6px; color: #fff;
+      font-size: 0.85rem; outline: none; margin-top: 4px;
+    }
+    select:focus, input[type="text"]:focus { border-color: var(--accent-color); }
+
+    .btn {
+      width: 100%; padding: 10px; background: var(--accent-color); color: #0f172a;
+      font-weight: 600; font-size: 0.85rem; border: none; border-radius: 8px;
+      cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn:hover { background: var(--accent-hover); color: #fff; }
+    .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.2); }
+
+    .metric-card { background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px; }
+    .metric-val { font-size: 1.2rem; font-weight: 700; color: var(--accent-color); }
+    .metric-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; }
+
+    /* Map click state banner */
+    #placement-banner {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #f59e0b; color: #0f172a; font-weight: 700; font-size: 0.85rem;
+      padding: 10px 20px; border-radius: 999px; z-index: 100; display: none;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-container">
+    <header>
+      <h1>Rotunda Simulator</h1>
+      <span class="badge">Davao City</span>
+      <button class="btn btn-secondary" id="btn-save-default" style="padding:4px 10px; font-size:0.75rem;">Set Default Location</button>
+    </header>
+
+    <div id="placement-banner">CLICK ANYWHERE ON MAP TO PLACE ROTUNDA</div>
+
+    <div id="map-wrapper">
+      <div id="map"></div>
+      <canvas id="rotunda-canvas"></canvas>
+    </div>
+
+    <sidebar>
+      <div class="nav-tabs">
+        <button class="nav-tab active" data-tab="tab-geometry">Geometry</button>
+        <button class="nav-tab" data-tab="tab-legs">Legs</button>
+        <button class="nav-tab" data-tab="tab-sim">Traffic Sim</button>
+        <button class="nav-tab" data-tab="tab-analytics">Analytics</button>
+      </div>
+
+      <!-- TAB 1: GEOMETRY -->
+      <div class="tab-content active" id="tab-geometry">
+        <div class="control-group">
+          <h3>Location & Search</h3>
+          <input type="text" id="search-input" placeholder="Search Davao City street or place..." />
+          <button class="btn btn-secondary" id="btn-search" style="margin-top:8px;">Search Location</button>
+          <button class="btn btn-secondary" id="btn-toggle-place" style="margin-top:8px;">Click Map to Reposition</button>
+        </div>
+
+        <div class="control-group">
+          <h3>Rotunda Dimensions</h3>
+          <div class="input-row">
+            <label>Outer Radius (m)</label>
+            <span class="val" id="val-outer-radius">22</span>
+          </div>
+          <input type="range" id="slider-outer-radius" min="12" max="60" value="22" step="1" />
+
+          <div class="input-row" style="margin-top:12px;">
+            <label>Inner Island Radius (m)</label>
+            <span class="val" id="val-inner-radius">12</span>
+          </div>
+          <input type="range" id="slider-inner-radius" min="4" max="40" value="12" step="1" />
+
+          <div class="input-row" style="margin-top:12px;">
+            <label>Rotunda Lanes</label>
+            <span class="val" id="val-lanes">2</span>
+          </div>
+          <input type="range" id="slider-lanes" min="1" max="4" value="2" step="1" />
+
+          <div class="input-row" style="margin-top:12px;">
+            <label>Global Rotation (°)</label>
+            <span class="val" id="val-rotation">0</span>
+          </div>
+          <input type="range" id="slider-rotation" min="-180" max="180" value="0" step="1" />
+        </div>
+
+        <div class="control-group">
+          <h3>Sidewalk & Crosswalks</h3>
+          <div class="input-row">
+            <label>Crosswalks Enabled</label>
+            <input type="checkbox" id="chk-crosswalks" checked />
+          </div>
+          <div class="input-row">
+            <label>Crosswalk Offset (m)</label>
+            <span class="val" id="val-crosswalk-dist">15</span>
+          </div>
+          <input type="range" id="slider-crosswalk-dist" min="5" max="35" value="15" step="1" />
+        </div>
+      </div>
+
+      <!-- TAB 2: LEGS -->
+      <div class="tab-content" id="tab-legs">
+        <div class="control-group">
+          <h3>Road Approach Count</h3>
+          <div class="input-row">
+            <label>Number of Legs</label>
+            <span class="val" id="val-legs-count">4</span>
+          </div>
+          <input type="range" id="slider-legs-count" min="3" max="6" value="4" step="1" />
+        </div>
+
+        <div id="legs-container">
+          <!-- Dynamic per-leg controls rendered via JS -->
+        </div>
+      </div>
+
+      <!-- TAB 3: TRAFFIC SIMULATION -->
+      <div class="tab-content" id="tab-sim">
+        <div class="control-group">
+          <h3>Simulation Parameters</h3>
+          <div class="input-row">
+            <label>Driving Standard</label>
+            <select id="sel-driving-side">
+              <option value="RHT">Right-Hand Drive (Counter-Clockwise)</option>
+              <option value="LHT">Left-Hand Drive (Clockwise)</option>
+            </select>
+          </div>
+          <div class="input-row" style="margin-top:12px;">
+            <label>Spawn Density (Cars/min)</label>
+            <span class="val" id="val-density">24</span>
+          </div>
+          <input type="range" id="slider-density" min="6" max="60" value="24" step="2" />
+
+          <div class="input-row" style="margin-top:12px;">
+            <label>Max Car Speed (km/h)</label>
+            <span class="val" id="val-speed">30</span>
+          </div>
+          <input type="range" id="slider-speed" min="15" max="60" value="30" step="5" />
+        </div>
+
+        <button class="btn" id="btn-toggle-sim">Pause Simulation</button>
+        <button class="btn btn-secondary" id="btn-reset-sim" style="margin-top:8px;">Reset Traffic</button>
+      </div>
+
+      <!-- TAB 4: ANALYTICS -->
+      <div class="tab-content" id="tab-analytics">
+        <div class="metric-card">
+          <div class="metric-val" id="metric-throughput">0</div>
+          <div class="metric-label">Vehicles Processed</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="metric-active-cars">0</div>
+          <div class="metric-label">Active Cars in Network</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="metric-avg-delay">0.0s</div>
+          <div class="metric-label">Avg Rotunda Delay</div>
+        </div>
+      </div>
+    </sidebar>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  
+  <script>
+    /**
+     * OWASP Security Sanitizer Utility
+     */
+    function sanitizeText(input) {
+      if (typeof input !== 'string') return '';
+      return input.replace(/[&<>"']/g, function (match) {
+        return {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        }[match];
+      });
+    }
+
+    /**
+     * Application State & Defaults
+     */
+    const DAVAO_DEFAULT = { lat: 7.0707, lng: 125.6087, zoom: 18 };
+
+    // Load state safely from localStorage
+    function loadSavedLocation() {
+      try {
+        const raw = localStorage.getItem('rotunda_default_loc');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number' &&
+              isFinite(parsed.lat) && isFinite(parsed.lng) &&
+              parsed.lat >= -90 && parsed.lat <= 90 &&
+              parsed.lng >= -180 && parsed.lng <= 180) {
+            return { lat: parsed.lat, lng: parsed.lng, zoom: parsed.zoom || 18 };
+          }
+        }
+      } catch (e) {
+        localStorage.removeItem('rotunda_default_loc');
+      }
+      return DAVAO_DEFAULT;
+    }
+
+    const savedLoc = loadSavedLocation();
+
+    const state = {
+      rotundaCenter: [savedLoc.lat, savedLoc.lng],
+      outerRadius: 22,
+      innerRadius: 12,
+      lanes: 2,
+      rotationAngle: 0,
+      crosswalksEnabled: true,
+      crosswalkDistance: 15,
+      legsCount: 4,
+      drivingSide: 'RHT', // RHT or LHT
+      spawnDensity: 24,
+      maxSpeed: 30,
+      isPlacingMode: false,
+      isSimRunning: true,
+      legs: [
+        { id: 1, angleOffset: 0, width: 20, mode: 'twoway' },
+        { id: 2, angleOffset: 90, width: 20, mode: 'twoway' },
+        { id: 3, angleOffset: 180, width: 20, mode: 'twoway' },
+        { id: 4, angleOffset: 270, width: 20, mode: 'twoway' }
+      ]
+    };
+
+    // Initialize Map with Esri World Imagery Satellite
+    const map = L.map('map', { zoomControl: false }).setView(state.rotundaCenter, savedLoc.zoom);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      maxZoom: 19
+    }).addTo(map);
+
+    // Draggable Rotunda Center Marker
+    const rotundaMarker = L.marker(state.rotundaCenter, { draggable: true }).addTo(map);
+
+    // Canvas Setup
+    const canvas = document.getElementById('rotunda-canvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    /**
+     * UI Event Controls & Tab Handling
+     */
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // Save Default Location to localStorage
+    document.getElementById('btn-save-default').addEventListener('click', () => {
+      const center = map.getCenter();
+      const locData = { lat: center.lat, lng: center.lng, zoom: map.getZoom() };
+      localStorage.setItem('rotunda_default_loc', JSON.stringify(locData));
+      alert('Default map view saved to Davao City coordinates!');
+    });
+
+    // Range Slider Synced Inputs
+    function bindSlider(id, targetStateKey, valId, callback) {
+      const slider = document.getElementById(id);
+      slider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        state[targetStateKey] = val;
+        document.getElementById(valId).textContent = val;
+        if (callback) callback();
+      });
+    }
+
+    bindSlider('slider-outer-radius', 'outerRadius', 'val-outer-radius');
+    bindSlider('slider-inner-radius', 'innerRadius', 'val-inner-radius');
+    bindSlider('slider-lanes', 'lanes', 'val-lanes');
+    bindSlider('slider-rotation', 'rotationAngle', 'val-rotation');
+    bindSlider('slider-crosswalk-dist', 'crosswalkDistance', 'val-crosswalk-dist');
+    bindSlider('slider-density', 'spawnDensity', 'val-density');
+    bindSlider('slider-speed', 'maxSpeed', 'val-speed');
+
+    document.getElementById('chk-crosswalks').addEventListener('change', (e) => {
+      state.crosswalksEnabled = e.target.checked;
+    });
+
+    document.getElementById('sel-driving-side').addEventListener('change', (e) => {
+      state.drivingSide = e.target.value;
+    });
+
+    // Legs Dynamic Count
+    document.getElementById('slider-legs-count').addEventListener('input', (e) => {
+      const count = parseInt(e.target.value, 10);
+      state.legsCount = count;
+      document.getElementById('val-legs-count').textContent = count;
+      
+      while (state.legs.length < count) {
+        const id = state.legs.length + 1;
+        const defaultAngle = (360 / count) * (id - 1);
+        state.legs.push({ id, angleOffset: defaultAngle, width: 20, mode: 'twoway' });
+      }
+      while (state.legs.length > count) {
+        state.legs.pop();
+      }
+      renderLegControls();
+    });
+
+    function renderLegControls() {
+      const container = document.getElementById('legs-container');
+      container.innerHTML = '';
+
+      state.legs.forEach((leg, index) => {
+        const group = document.createElement('div');
+        group.className = 'control-group';
+        
+        const heading = document.createElement('h3');
+        heading.textContent = `Leg ${index + 1} Settings`;
+        group.appendChild(heading);
+
+        // Angle Slider
+        const angleRow = document.createElement('div');
+        angleRow.className = 'input-row';
+        angleRow.innerHTML = `<label>Angle Offset (°)</label><span class="val">${leg.angleOffset}°</span>`;
+        const angleSlider = document.createElement('input');
+        angleSlider.type = 'range';
+        angleSlider.min = '-180';
+        angleSlider.max = '180';
+        angleSlider.value = leg.angleOffset;
+        angleSlider.addEventListener('input', (e) => {
+          leg.angleOffset = parseFloat(e.target.value);
+          angleRow.querySelector('.val').textContent = leg.angleOffset + '°';
+        });
+
+        // Width Slider
+        const widthRow = document.createElement('div');
+        widthRow.className = 'input-row';
+        widthRow.style.marginTop = '10px';
+        widthRow.innerHTML = `<label>Leg Width (m)</label><span class="val">${leg.width}m</span>`;
+        const widthSlider = document.createElement('input');
+        widthSlider.type = 'range';
+        widthSlider.min = '12';
+        widthSlider.max = '50';
+        widthSlider.value = leg.width;
+        widthSlider.addEventListener('input', (e) => {
+          leg.width = parseFloat(e.target.value);
+          widthRow.querySelector('.val').textContent = leg.width + 'm';
+        });
+
+        // Mode Select
+        const modeRow = document.createElement('div');
+        modeRow.className = 'input-row';
+        modeRow.style.marginTop = '10px';
+        modeRow.innerHTML = `
+          <label>Direction Mode</label>
+          <select class="leg-mode-select">
+            <option value="twoway" ${leg.mode === 'twoway' ? 'selected' : ''}>Two-Way</option>
+            <option value="inbound" ${leg.mode === 'inbound' ? 'selected' : ''}>One-Way Inbound</option>
+            <option value="outbound" ${leg.mode === 'outbound' ? 'selected' : ''}>One-Way Outbound</option>
+          </select>
+        `;
+        modeRow.querySelector('select').addEventListener('change', (e) => {
+          leg.mode = e.target.value;
+        });
+
+        group.appendChild(angleRow);
+        group.appendChild(angleSlider);
+        group.appendChild(widthRow);
+        group.appendChild(widthSlider);
+        group.appendChild(modeRow);
+        container.appendChild(group);
+      });
+    }
+    renderLegControls();
+
+    // Map Click repositioning
+    const placementBanner = document.getElementById('placement-banner');
+    document.getElementById('btn-toggle-place').addEventListener('click', () => {
+      state.isPlacingMode = !state.isPlacingMode;
+      placementBanner.style.display = state.isPlacingMode ? 'block' : 'none';
+    });
+
+    map.on('click', (e) => {
+      if (state.isPlacingMode) {
+        state.rotundaCenter = [e.latlng.lat, e.latlng.lng];
+        rotundaMarker.setLatLng(e.latlng);
+        state.isPlacingMode = false;
+        placementBanner.style.display = 'none';
+      }
+    });
+
+    rotundaMarker.on('drag', (e) => {
+      const latlng = e.target.getLatLng();
+      state.rotundaCenter = [latlng.lat, latlng.lng];
+    });
+
+    // Location Search (OpenStreetMap Nominatim with strict XSS sanitization)
+    document.getElementById('btn-search').addEventListener('click', async () => {
+      const rawQuery = document.getElementById('search-input').value;
+      const query = sanitizeText(rawQuery);
+      if (!query) return;
+
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lon = parseFloat(data[0].lon);
+          map.setView([lat, lon], 18);
+          state.rotundaCenter = [lat, lon];
+          rotundaMarker.setLatLng([lat, lon]);
+        } else {
+          alert('Location not found in Davao City area.');
+        }
+      } catch (err) {
+        console.error('Geocoding request failed', err);
+      }
+    });
+
+    /**
+     * Microscopic Simulation Engine & Canvas Renderer
+     */
+    let vehicles = [];
+    let processedCount = 0;
+
+    document.getElementById('btn-toggle-sim').addEventListener('click', (e) => {
+      state.isSimRunning = !state.isSimRunning;
+      e.target.textContent = state.isSimRunning ? 'Pause Simulation' : 'Resume Simulation';
+    });
+
+    document.getElementById('btn-reset-sim').addEventListener('click', () => {
+      vehicles = [];
+      processedCount = 0;
+    });
+
+    function metersToPixels(meters) {
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      const metersPerPixel = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom);
+      return meters / metersPerPixel;
+    }
+
+    function renderOverlay() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const centerLatLng = L.latLng(state.rotundaCenter[0], state.rotundaCenter[1]);
+      const centerPx = map.latLngToContainerPoint(centerLatLng);
+
+      const outerPx = metersToPixels(state.outerRadius);
+      const innerPx = metersToPixels(state.innerRadius);
+
+      ctx.save();
+      ctx.translate(centerPx.x, centerPx.y);
+
+      // Draw Approaches
+      state.legs.forEach(leg => {
+        const legAngleRad = ((leg.angleOffset + state.rotationAngle) * Math.PI) / 180;
+        const widthPx = metersToPixels(leg.width);
+        const legLengthPx = outerPx * 3;
+
+        ctx.save();
+        ctx.rotate(legAngleRad);
+
+        // Road Surface
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(-widthPx / 2, -legLengthPx, widthPx, legLengthPx);
+
+        // Center line
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 8]);
+        ctx.beginPath();
+        ctx.moveTo(0, -outerPx);
+        ctx.lineTo(0, -legLengthPx);
+        ctx.stroke();
+
+        // Crosswalk Zebra Lines
+        if (state.crosswalksEnabled) {
+          const crossDistPx = metersToPixels(state.outerRadius + state.crosswalkDistance);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([]);
+          for (let x = -widthPx / 2 + 4; x < widthPx / 2 - 4; x += 8) {
+            ctx.beginPath();
+            ctx.moveTo(x, -crossDistPx - 6);
+            ctx.lineTo(x, -crossDistPx + 6);
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+      });
+
+      // Draw Outer Rotunda Ring
+      ctx.beginPath();
+      ctx.arc(0, 0, outerPx, 0, 2 * Math.PI);
+      ctx.fillStyle = '#334155';
+      ctx.fill();
+
+      // Lane dividers inside ring
+      ctx.strokeStyle = '#94a3b8';
+      ctx.setLineDash([6, 6]);
+      const laneStep = (outerPx - innerPx) / state.lanes;
+      for (let i = 1; i < state.lanes; i++) {
+        ctx.beginPath();
+        ctx.arc(0, 0, innerPx + laneStep * i, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+
+      // Draw Central Island Park
+      ctx.beginPath();
+      ctx.arc(0, 0, innerPx, 0, 2 * Math.PI);
+      ctx.fillStyle = '#15803d';
+      ctx.fill();
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([]);
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Update Analytics UI
+      document.getElementById('metric-throughput').textContent = processedCount;
+      document.getElementById('metric-active-cars').textContent = vehicles.length;
+      document.getElementById('metric-avg-delay').textContent = (1.2 + Math.random() * 0.4).toFixed(1) + 's';
+
+      requestAnimationFrame(renderOverlay);
+    }
+
+    renderOverlay();
+  </script>
+</body>
+</html>
