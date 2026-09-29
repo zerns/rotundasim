@@ -1673,7 +1673,8 @@
       }
 
       const vehicleColor = ['#38bdf8', '#34d399', '#f87171', '#fbbf24', '#a78bfa'][Math.floor(Math.random() * 5)];
-      const baseSpeed = (appState.maxSpeedKmH / 3600) * 0.08;
+      // Metres per second, with a little per-vehicle variation.
+      const baseSpeed = (appState.maxSpeedKmH / 3.6) * (0.85 + Math.random() * 0.3);
 
       vehicleAgents.push({
         id: Math.random(),
@@ -1685,16 +1686,97 @@
         color: vehicleColor,
         laneFraction: targetLaneFraction,
         stepCount: stepCount,
-        isYielding: false
+        isYielding: false,
+        stoppedFor: 0,
+        creepWarned: false
       });
     }
 
-    function getVehiclePosition(car, progress, centerPx, outerPx, islandPx, centerLatLng) {
+    // Car-following model constants, in real units.
+    const VEHICLE_LEN_M = 4.5;
+    const MIN_GAP_M = 2.0;
+    const TIME_HEADWAY_S = 1.2;
+    const GAP_ACCEPTANCE_S = 2.5;
+    const LANE_BAND = 0.12;
+    const CREEP_AFTER_S = 15;
+    const DESPAWN_AFTER_S = 40;
+    const OUTER_LANE_FRACTION = 0.78;
+    // Standstill spacing implied by the following model. Ring occupancy must stay
+    // below this jam density or circulating traffic can block itself in a closed loop.
+    const JAM_SPACING_M = VEHICLE_LEN_M + MIN_GAP_M;
+    const RING_TARGET_DENSITY = 0.6;
+
+    // How many cars a given ring lane holds before it jams. Inner lanes are much
+    // shorter than outer ones, so capacity has to be computed per lane, not averaged.
+    function laneCapacity(laneFraction) {
+      const radiusM = appState.islandRadiusMeters
+        + (appState.outerRadiusMeters - appState.islandRadiusMeters) * laneFraction;
+      const circumferenceM = 2 * Math.PI * radiusM;
+      return Math.max(2, Math.floor((circumferenceM * RING_TARGET_DENSITY) / JAM_SPACING_M));
+    }
+
+    function getRingCapacity() {
+      const outer = laneCapacity(OUTER_LANE_FRACTION);
+      // Total is an approximation for the HUD; the entry gate uses per-lane numbers.
+      let total = 0;
+      for (let i = 0; i < appState.ringLanes; i++) {
+        total += laneCapacity(OUTER_LANE_FRACTION - (i * 0.28));
+      }
+      return { perLane: outer, total: Math.max(2, total) };
+    }
+
+    // Shared ring geometry: the arc a car sweeps from its entry leg to its exit leg.
+    // Used by both the position function and the path-length metrics so the two can never disagree.
+    function getRingArc(car) {
       const entryLeg = appState.legs.find(l => l.id === car.entryLegId) || appState.legs[0];
       const exitLeg = appState.legs.find(l => l.id === car.exitLegId) || appState.legs[0];
 
       const entryAngleDeg = (entryLeg.baseAngle + entryLeg.angleOffset + appState.globalAngleOffset) % 360;
       const exitAngleDeg = (exitLeg.baseAngle + exitLeg.angleOffset + appState.globalAngleOffset) % 360;
+
+      const startAngle = (entryAngleDeg - 90) * (Math.PI / 180);
+      let endAngle = (exitAngleDeg - 90) * (Math.PI / 180);
+
+      if (appState.trafficStandard === 'RHT') {
+        while (endAngle <= startAngle) endAngle += Math.PI * 2;
+      } else {
+        while (endAngle >= startAngle) endAngle -= Math.PI * 2;
+      }
+
+      return { entryLeg, exitLeg, entryAngleDeg, exitAngleDeg, startAngle, endAngle, sweep: endAngle - startAngle };
+    }
+
+    // Pixel length of each of the three phases, so progress can advance at a constant real-world speed.
+    function computePathMetrics(car, outerPx, islandPx, centerLatLng) {
+      const arc = getRingArc(car);
+      const targetRadius = islandPx + (outerPx - islandPx) * car.laneFraction;
+      return {
+        arc,
+        targetRadius,
+        entryLenPx: Math.max(1, getPixelRadius(centerLatLng, arc.entryLeg.lengthMeters || 120)),
+        ringLenPx: Math.max(1, Math.abs(arc.sweep) * targetRadius),
+        exitLenPx: Math.max(1, getPixelRadius(centerLatLng, arc.exitLeg.lengthMeters || 120))
+      };
+    }
+
+    function phaseLengthPx(progress, metrics) {
+      if (progress < 1) return metrics.entryLenPx;
+      if (progress < 2) return metrics.ringLenPx;
+      return metrics.exitLenPx;
+    }
+
+    // Signed angular delta from a to b in the direction of travel, normalised to [0, 2PI).
+    function angularDeltaAhead(a, b) {
+      const raw = appState.trafficStandard === 'RHT' ? (b - a) : (a - b);
+      return ((raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    }
+
+    function getVehiclePosition(car, progress, centerPx, outerPx, islandPx, centerLatLng) {
+      const arc = getRingArc(car);
+      const entryLeg = arc.entryLeg;
+      const exitLeg = arc.exitLeg;
+      const entryAngleDeg = arc.entryAngleDeg;
+      const exitAngleDeg = arc.exitAngleDeg;
 
       const outerLaneRadius = islandPx + (outerPx - islandPx) * 0.78;
       const targetRadius = islandPx + (outerPx - islandPx) * car.laneFraction;
@@ -1721,16 +1803,7 @@
 
       } else if (progress >= 1 && progress < 2) {
         const ringProgress = progress - 1;
-        let startAngle = (entryAngleDeg - 90) * (Math.PI / 180);
-        let endAngle = (exitAngleDeg - 90) * (Math.PI / 180);
-
-        if (appState.trafficStandard === 'RHT') {
-          if (endAngle <= startAngle) endAngle += Math.PI * 2;
-        } else {
-          if (endAngle >= startAngle) endAngle -= Math.PI * 2;
-        }
-
-        const currentArcAngle = startAngle + (endAngle - startAngle) * ringProgress;
+        const currentArcAngle = arc.startAngle + arc.sweep * ringProgress;
 
         let currentRadius = targetRadius;
         if (ringProgress < 0.3) {
@@ -1772,7 +1845,6 @@
       if (!appState.simulationRunning) return;
 
       const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
-      const centerPx = map.latLngToContainerPoint(centerLatLng);
       const outerPx = getPixelRadius(centerLatLng, appState.outerRadiusMeters);
       const islandPx = getPixelRadius(centerLatLng, appState.islandRadiusMeters);
 
@@ -1781,54 +1853,84 @@
         spawnVehicle();
       }
 
-      const ringCars = vehicleAgents.filter(c => c.progress >= 1.0 && c.progress < 2.0);
-      const ringOccupancy = ringCars.length;
+      const cap = getRingCapacity();
 
-      const avgRadiusMeters = (appState.outerRadiusMeters + appState.islandRadiusMeters) / 2;
-      const circumferenceMeters = 2 * Math.PI * avgRadiusMeters;
-      const maxRingCapacity = Math.max(6, Math.floor((circumferenceMeters / 7.5) * appState.ringLanes));
+      const pxPerMeter = Math.max(0.0001, getPixelRadius(centerLatLng, 1));
 
+      // Per-car state derived once per frame.
       const carData = vehicleAgents.map(car => {
-        const pos = getVehiclePosition(car, car.progress, centerPx, outerPx, islandPx, centerLatLng);
-        const aheadPos = getVehiclePosition(car, car.progress + 0.005, centerPx, outerPx, islandPx, centerLatLng);
-        const dx = aheadPos.x - pos.x;
-        const dy = aheadPos.y - pos.y;
-        const len = Math.hypot(dx, dy) || 1;
+        const metrics = computePathMetrics(car, outerPx, islandPx, centerLatLng);
+        const phase = car.progress < 1 ? 'entry' : (car.progress < 2 ? 'ring' : 'exit');
         return {
           car,
-          pos,
-          dir: { x: dx / len, y: dy / len }
+          metrics,
+          phase,
+          // Distance travelled within the current phase, in pixels.
+          sPx: phase === 'entry'
+            ? car.progress * metrics.entryLenPx
+            : (phase === 'ring'
+              ? (car.progress - 1) * metrics.ringLenPx
+              : (car.progress - 2) * metrics.exitLenPx),
+          isOuterBand: car.laneFraction >= 0.55,
+          ringAngle: phase === 'ring'
+            ? metrics.arc.startAngle + metrics.arc.sweep * (car.progress - 1)
+            : null
         };
       });
+
+      // Entrants merge into the outer lane, so that lane's occupancy gates entry.
+      const outerBandOccupancy = carData.filter(d => d.phase === 'ring' && d.isOuterBand).length;
 
       let yieldingCount = 0;
 
       for (let i = 0; i < carData.length; i++) {
         const item = carData[i];
         const car = item.car;
-        const pos = item.pos;
-        const dir = item.dir;
+        const metrics = item.metrics;
+
+        // Watchdog: only a stop with NO valid reason counts as a stall. Waiting in a
+        // queue or giving way is legitimate, however long it lasts.
+        const creeping = (car.stoppedFor || 0) > CREEP_AFTER_S;
 
         let targetSpeed = car.speed;
         let mustStopForYield = false;
 
-        if (car.progress >= 0.90 && car.progress < 1.0) {
-          if (ringOccupancy >= maxRingCapacity) {
-            mustStopForYield = true;
+        // --- Give way at the entry: ring traffic has priority ---
+        if (item.phase === 'entry' && car.progress >= 0.90) {
+          const entryAngle = (metrics.arc.entryAngleDeg - 90) * (Math.PI / 180);
+
+          // Advisory capacity throttle — only before the give-way line, never once committed.
+          // The entrant needs room both at the merge point (outer lane) and in the lane it
+          // will settle into, otherwise the tight inner lane silts up against the island.
+          if (car.progress < 0.98) {
+            const ownLaneOccupancy = carData.filter(d => d.phase === 'ring'
+              && Math.abs(d.car.laneFraction - car.laneFraction) < LANE_BAND).length;
+            if (outerBandOccupancy >= cap.perLane || ownLaneOccupancy >= laneCapacity(car.laneFraction)) {
+              mustStopForYield = true;
+            }
           }
 
           if (!mustStopForYield) {
-            const yieldThresholdPx = Math.max(25, outerPx * 0.45);
-            for (let rCar of ringCars) {
-              const rPos = getVehiclePosition(rCar, rCar.progress, centerPx, outerPx, islandPx, centerLatLng);
-              const distToEntry = Math.hypot(rPos.x - pos.x, rPos.y - pos.y);
+            for (const other of carData) {
+              if (other.phase !== 'ring') continue;
+              // Only the lane the entrant merges into (the outer band) conflicts.
+              if (other.car.laneFraction < 0.55) continue;
 
-              if (distToEntry < yieldThresholdPx) {
+              const deltaToEntry = angularDeltaAhead(other.ringAngle, entryAngle);
+              const remainingSweep = Math.abs(metrics.arc.sweep) * (2 - other.car.progress);
+              // A car that leaves the ring before reaching this entry is no conflict.
+              if (deltaToEntry > remainingSweep) continue;
+
+              const distM = (deltaToEntry * other.metrics.targetRadius) / pxPerMeter;
+              const speed = Math.max(0.5, other.car.currentSpeed);
+              if (distM / speed < GAP_ACCEPTANCE_S) {
                 mustStopForYield = true;
                 break;
               }
             }
           }
+
+          if (creeping) mustStopForYield = false;
 
           if (mustStopForYield) {
             targetSpeed = 0;
@@ -1841,22 +1943,63 @@
           car.isYielding = false;
         }
 
-        const MIN_SAFE_GAP = 24;
+        // --- Car following, in path space: only a car genuinely ahead in the same
+        // corridor and lane band can slow this one. "Ahead" is antisymmetric, so
+        // two cars can never block each other. ---
+        let nearestGapPx = Infinity;
 
         for (let j = 0; j < carData.length; j++) {
           if (i === j) continue;
           const other = carData[j];
+          let gapPx = Infinity;
 
-          const relX = other.pos.x - pos.x;
-          const relY = other.pos.y - pos.y;
-          const dist = Math.hypot(relX, relY);
-          const dot = relX * dir.x + relY * dir.y;
+          if (item.phase === 'entry' && other.phase === 'entry'
+            && other.car.entryLegId === car.entryLegId) {
+            if (other.sPx > item.sPx) gapPx = other.sPx - item.sPx;
 
-          if (dist < MIN_SAFE_GAP && dot > 0) {
-            const gapFactor = Math.max(0, (dist - 10) / (MIN_SAFE_GAP - 10));
-            targetSpeed = Math.min(targetSpeed, car.speed * gapFactor);
-            if (dist < 14) targetSpeed = 0;
+          } else if (item.phase === 'ring' && other.phase === 'ring') {
+            if (Math.abs(other.car.laneFraction - car.laneFraction) < LANE_BAND) {
+              const delta = angularDeltaAhead(item.ringAngle, other.ringAngle);
+              gapPx = delta * metrics.targetRadius;
+            }
+
+          } else if (item.phase === 'exit' && other.phase === 'exit'
+            && other.car.exitLegId === car.exitLegId) {
+            if (other.sPx > item.sPx) gapPx = other.sPx - item.sPx;
+
+          } else if (item.phase === 'ring' && other.phase === 'exit'
+            && other.car.exitLegId === car.exitLegId) {
+            // A car about to leave the ring still queues behind traffic on its exit leg.
+            const remainingRingPx = metrics.ringLenPx * (2 - car.progress);
+            gapPx = remainingRingPx + other.sPx;
           }
+
+          if (gapPx < nearestGapPx) nearestGapPx = gapPx;
+        }
+
+        let heldByLeader = false;
+        if (nearestGapPx < Infinity) {
+          const gapM = nearestGapPx / pxPerMeter;
+          const freeM = Math.max(0, gapM - VEHICLE_LEN_M - MIN_GAP_M);
+          const follow = freeM / TIME_HEADWAY_S;
+          if (follow < targetSpeed) {
+            targetSpeed = follow;
+            heldByLeader = true;
+          }
+        }
+
+        if (creeping) targetSpeed = Math.max(targetSpeed, 1.0);
+
+        // Accumulate stall time only when the car is stopped for no discernible reason.
+        const nearlyStopped = car.currentSpeed < car.speed * 0.02;
+        if (nearlyStopped && !mustStopForYield && !heldByLeader) {
+          car.stoppedFor = (car.stoppedFor || 0) + dt;
+          if (car.stoppedFor > CREEP_AFTER_S && !car.creepWarned) {
+            car.creepWarned = true;
+            console.warn('[rotundasim] vehicle stalled >15s with no blocker — traffic model may be wrong', car.id);
+          }
+        } else {
+          car.stoppedFor = 0;
         }
 
         if (targetSpeed < car.currentSpeed) {
@@ -1869,14 +2012,22 @@
           car.progress = 0.95;
           car.currentSpeed = 0;
         } else {
-          car.progress += car.currentSpeed * dt * 60;
+          // Constant real-world speed: convert m/s to a fraction of the current phase.
+          const phaseLen = phaseLengthPx(car.progress, metrics);
+          const delta = (car.currentSpeed * pxPerMeter * dt) / phaseLen;
+          car.progress += Math.min(delta, 0.2);
         }
       }
 
       for (let i = vehicleAgents.length - 1; i >= 0; i--) {
-        if (vehicleAgents[i].progress >= 3.0) {
+        const car = vehicleAgents[i];
+        if (car.progress >= 3.0) {
           vehicleAgents.splice(i, 1);
           simStats.totalProcessed++;
+        } else if ((car.stoppedFor || 0) > DESPAWN_AFTER_S) {
+          console.warn('[rotundasim] vehicle stalled >40s, despawning', car.id);
+          vehicleAgents.splice(i, 1);
+          simStats.totalStalled = (simStats.totalStalled || 0) + 1;
         }
       }
 
@@ -1889,7 +2040,10 @@
 
       vehicleAgents.forEach((car) => {
         const pos = getVehiclePosition(car, car.progress, centerPx, outerPx, islandPx, centerLatLng);
-        const aheadPos = getVehiclePosition(car, car.progress + 0.005, centerPx, outerPx, islandPx, centerLatLng);
+        // Sample a fixed 2px ahead along the path so heading stays stable across phases.
+        const metrics = computePathMetrics(car, outerPx, islandPx, centerLatLng);
+        const lookAhead = 2 / phaseLengthPx(car.progress, metrics);
+        const aheadPos = getVehiclePosition(car, car.progress + lookAhead, centerPx, outerPx, islandPx, centerLatLng);
 
         const dx = aheadPos.x - pos.x;
         const dy = aheadPos.y - pos.y;
@@ -1940,9 +2094,7 @@
       const avgDelay = ((simStats.activeCarsCount * 0.12) + (yieldingCount * 1.2)).toFixed(1);
       if (delayEl) delayEl.textContent = `${avgDelay} s`;
 
-      const avgRadiusMeters = (appState.outerRadiusMeters + appState.islandRadiusMeters) / 2;
-      const circumferenceMeters = 2 * Math.PI * avgRadiusMeters;
-      const maxRingCapacity = Math.max(6, Math.floor((circumferenceMeters / 7.5) * appState.ringLanes));
+      const maxRingCapacity = getRingCapacity().total;
 
       const ringCars = vehicleAgents.filter(c => c.progress >= 1.0 && c.progress < 2.0);
       const ringOccupancy = ringCars.length;
