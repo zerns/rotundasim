@@ -101,6 +101,15 @@
       }
     }
 
+    function trackRotundaSave(saveType) {
+      if (typeof gtag !== 'function') return;
+      gtag('event', 'save_rotunda', {
+        save_type: saveType,
+        lat: Math.round(appState.centerLat * 1000) / 1000,
+        lng: Math.round(appState.centerLng * 1000) / 1000
+      });
+    }
+
     // Global application state object
     const appState = {
       centerLat: DEFAULT_LAT,
@@ -899,6 +908,7 @@
         entry.state.legs = JSON.parse(JSON.stringify(appState.legs));
         entry.timestamp = Date.now();
         saveSavedRotundasToStorage();
+        trackRotundaSave('update');
         renderSavedRotundas();
         markSnapshotAsSaved();
         refreshSaveButtonState();
@@ -931,6 +941,7 @@
 
         savedRotundas.unshift(newRotunda);
         saveSavedRotundasToStorage();
+        trackRotundaSave('new');
         currentRotundaId = newRotunda.id;
         markSnapshotAsSaved();
         refreshSaveButtonState();
