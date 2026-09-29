@@ -1653,11 +1653,13 @@
       const entryIdx = sortedLegs.findIndex(l => l.id === entryLeg.id);
       const exitIdx = sortedLegs.findIndex(l => l.id === exitLeg.id);
 
+      // Legs are sorted by increasing compass angle, i.e. clockwise. Right-hand traffic
+      // circulates counterclockwise, so it visits them in decreasing index order.
       let stepCount = 0;
       if (appState.trafficStandard === 'RHT') {
-        stepCount = (exitIdx - entryIdx + sortedLegs.length) % sortedLegs.length;
-      } else {
         stepCount = (entryIdx - exitIdx + sortedLegs.length) % sortedLegs.length;
+      } else {
+        stepCount = (exitIdx - entryIdx + sortedLegs.length) % sortedLegs.length;
       }
       if (stepCount === 0) stepCount = sortedLegs.length;
 
@@ -1737,10 +1739,13 @@
       const startAngle = (entryAngleDeg - 90) * (Math.PI / 180);
       let endAngle = (exitAngleDeg - 90) * (Math.PI / 180);
 
+      // Screen angles increase clockwise (y grows downward), so right-hand traffic —
+      // which circulates counterclockwise, keeping the island on the driver's left —
+      // sweeps towards DECREASING angle. Left-hand traffic is the mirror.
       if (appState.trafficStandard === 'RHT') {
-        while (endAngle <= startAngle) endAngle += Math.PI * 2;
-      } else {
         while (endAngle >= startAngle) endAngle -= Math.PI * 2;
+      } else {
+        while (endAngle <= startAngle) endAngle += Math.PI * 2;
       }
 
       return { entryLeg, exitLeg, entryAngleDeg, exitAngleDeg, startAngle, endAngle, sweep: endAngle - startAngle };
@@ -1767,7 +1772,7 @@
 
     // Signed angular delta from a to b in the direction of travel, normalised to [0, 2PI).
     function angularDeltaAhead(a, b) {
-      const raw = appState.trafficStandard === 'RHT' ? (b - a) : (a - b);
+      const raw = appState.trafficStandard === 'RHT' ? (a - b) : (b - a);
       return ((raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     }
 
@@ -1917,7 +1922,7 @@
               if (other.car.laneFraction < 0.55) continue;
 
               const deltaToEntry = angularDeltaAhead(other.ringAngle, entryAngle);
-              const remainingSweep = Math.abs(metrics.arc.sweep) * (2 - other.car.progress);
+              const remainingSweep = Math.abs(other.metrics.arc.sweep) * (2 - other.car.progress);
               // A car that leaves the ring before reaching this entry is no conflict.
               if (deltaToEntry > remainingSweep) continue;
 
