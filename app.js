@@ -509,15 +509,28 @@
         }
 
         const pt = map.latLngToContainerPoint(e.latlng);
-        const hitLeg = findLegAtPoint(pt.x, pt.y);
-        rotundaSelected = isPointOnRotunda(pt.x, pt.y);
+        // Leg rects run from the rotunda center outward, so they overlap the ring
+        // and island. Test the circle first so it wins inside the outer radius.
+        const onCircle = isPointOnRotundaCircle(pt.x, pt.y);
+        const hitLeg = onCircle ? null : findLegAtPoint(pt.x, pt.y);
+        rotundaSelected = onCircle || hitLeg !== null;
 
         if (hitLeg !== null) {
           selectedLegIdx = hitLeg;
+          setGlobalDimensionsHighlighted(false);
           revealLegControlCard(hitLeg);
-        } else if (!rotundaSelected) {
+        } else if (rotundaSelected) {
           selectedLegIdx = null;
           renderPerLegUIControls();
+          setGlobalDimensionsHighlighted(true);
+          const geomTabBtn = document.getElementById('tab-btn-geom');
+          if (geomTabBtn) geomTabBtn.click();
+          const dimsCard = document.getElementById('global-dimensions-card');
+          if (dimsCard) dimsCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          selectedLegIdx = null;
+          renderPerLegUIControls();
+          setGlobalDimensionsHighlighted(false);
         }
 
         updateGlobalLegWidthVisibility();
@@ -808,14 +821,22 @@
       return null;
     }
 
-    function isPointOnRotunda(px, py) {
+    function isPointOnRotundaCircle(px, py) {
       const centerLatLng = L.latLng(appState.centerLat, appState.centerLng);
       const centerPx = map.latLngToContainerPoint(centerLatLng);
       const outerPx = getPixelRadius(centerLatLng, appState.outerRadiusMeters);
+      return Math.hypot(px - centerPx.x, py - centerPx.y) <= outerPx;
+    }
 
-      if (Math.hypot(px - centerPx.x, py - centerPx.y) <= outerPx) return true;
+    function isPointOnRotunda(px, py) {
+      return isPointOnRotundaCircle(px, py) || findLegAtPoint(px, py) !== null;
+    }
 
-      return findLegAtPoint(px, py) !== null;
+    function setGlobalDimensionsHighlighted(on) {
+      const card = document.getElementById('global-dimensions-card');
+      if (!card) return;
+      card.classList.toggle('ring-2', on);
+      card.classList.toggle('ring-sky-500/50', on);
     }
 
     function revealLegControlCard(idx) {
