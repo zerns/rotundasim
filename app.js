@@ -2114,80 +2114,187 @@
       return metrics.exitLenPx;
     }
 
+    const TURN_SLOWDOWN_APPROACH = 0.05; // progress spent braking into each turn
+    const TURN_SLOWDOWN_MIN_FACTOR = 0.45; // speed multiplier at the tightest part of the turn
+    const LANECHANGE_SLOWDOWN_MIN_FACTOR = 0.7; // speed multiplier while easing radius within the ring
+
+    function smoothstep(t) {
+      const c = Math.max(0, Math.min(1, t));
+      return c * c * (3 - 2 * c);
+    }
+
+    // Speed multiplier for the curved connectors that join a leg to the ring (see
+    // CONNECTOR_SPAN / getVehiclePosition) — cars ease off before the turn and pick
+    // back up once they're back on a straight/circulating section. Also eases off
+    // during the in-ring radius shift (RING_LANE_EASE_SPAN, matches getVehiclePosition)
+    // where a car merges into or out of its lane — the ring-lane equivalent of a
+    // lane change.
+    function turnSpeedFactor(progress) {
+      const t = progress - Math.floor(progress);
+      const straightSpan = 1 - CONNECTOR_SPAN;
+      if (progress < 1) {
+        if (t < straightSpan - TURN_SLOWDOWN_APPROACH) return 1;
+        if (t < straightSpan) {
+          const smoothT = smoothstep((t - (straightSpan - TURN_SLOWDOWN_APPROACH)) / TURN_SLOWDOWN_APPROACH);
+          return 1 - (1 - TURN_SLOWDOWN_MIN_FACTOR) * smoothT;
+        }
+        return TURN_SLOWDOWN_MIN_FACTOR;
+      }
+      if (progress < 2) {
+        const ringProgress = t;
+        if (ringProgress < RING_LANE_EASE_SPAN) {
+          const smoothT = smoothstep(1 - ringProgress / RING_LANE_EASE_SPAN);
+          return 1 - (1 - LANECHANGE_SLOWDOWN_MIN_FACTOR) * smoothT;
+        }
+        if (ringProgress > 1 - RING_LANE_EASE_SPAN) {
+          const smoothT = smoothstep((ringProgress - (1 - RING_LANE_EASE_SPAN)) / RING_LANE_EASE_SPAN);
+          return 1 - (1 - LANECHANGE_SLOWDOWN_MIN_FACTOR) * smoothT;
+        }
+        return 1;
+      }
+      if (t < CONNECTOR_SPAN) return TURN_SLOWDOWN_MIN_FACTOR;
+      if (t < CONNECTOR_SPAN + TURN_SLOWDOWN_APPROACH) {
+        const smoothT = smoothstep((t - CONNECTOR_SPAN) / TURN_SLOWDOWN_APPROACH);
+        return TURN_SLOWDOWN_MIN_FACTOR + (1 - TURN_SLOWDOWN_MIN_FACTOR) * smoothT;
+      }
+      return 1;
+    }
+
     // Signed angular delta from a to b in the direction of travel, normalised to [0, 2PI).
     function angularDeltaAhead(a, b) {
       const raw = appState.trafficStandard === 'RHT' ? (a - b) : (b - a);
       return ((raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     }
 
+    // Fraction of each straight leg phase handed over to the curved connector that
+    // joins the leg's lane centreline to the ring lane.
+    const CONNECTOR_SPAN = 0.1;
+
+    // How far around the ring, beyond the point abeam the approach lane, a car joins or
+    // leaves the circulating arc. Legs are radial, so the turn is a near right angle; the
+    // extra sweep gives the curve a diagonal chord and keeps its radius driveable instead
+    // of bunching all the heading change against the ring joint.
+    const TURN_TRIM_RAD = 30 * (Math.PI / 180);
+
+    // Fraction of the ring phase spent easing radius in/out of a car's lane, at each
+    // end of the ring traversal (merging in after entry, tucking out before exit).
+    const RING_LANE_EASE_SPAN = 0.3;
+
+    // Rotate a point given in leg-local coordinates (x across the leg, y along it,
+    // negative y pointing away from the centre) into screen space.
+    function legLocalToWorld(centerPx, rad, localX, localY) {
+      return {
+        x: centerPx.x + localX * Math.cos(rad) - localY * Math.sin(rad),
+        y: centerPx.y + localX * Math.sin(rad) + localY * Math.cos(rad)
+      };
+    }
+
+    function hermite(p0, t0, p1, t1, t) {
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const h00 = 2 * t3 - 3 * t2 + 1;
+      const h10 = t3 - 2 * t2 + t;
+      const h01 = -2 * t3 + 3 * t2;
+      const h11 = t3 - t2;
+      return {
+        x: h00 * p0.x + h10 * t0.x + h01 * p1.x + h11 * t1.x,
+        y: h00 * p0.y + h10 * t0.y + h01 * p1.y + h11 * t1.y
+      };
+    }
+
     function getVehiclePosition(car, progress, centerPx, outerPx, islandPx, centerLatLng) {
       const arc = getRingArc(car);
       const entryLeg = arc.entryLeg;
       const exitLeg = arc.exitLeg;
-      const entryAngleDeg = arc.entryAngleDeg;
-      const exitAngleDeg = arc.exitAngleDeg;
+      const entryRad = (arc.entryAngleDeg * Math.PI) / 180;
+      const exitRad = (arc.exitAngleDeg * Math.PI) / 180;
 
       const outerLaneRadius = islandPx + (outerPx - islandPx) * 0.78;
       const targetRadius = islandPx + (outerPx - islandPx) * car.laneFraction;
+      const sweepSign = Math.sign(arc.sweep) || 1;
 
-      let posX = centerPx.x;
-      let posY = centerPx.y;
+      const entryOffsetMeters = appState.trafficStandard === 'RHT' ? -(entryLeg.widthMeters / 4) : (entryLeg.widthMeters / 4);
+      const entryLocalX = getPixelRadius(centerLatLng, entryOffsetMeters) * Math.sign(entryOffsetMeters);
+      const exitOffsetMeters = appState.trafficStandard === 'RHT' ? (exitLeg.widthMeters / 4) : -(exitLeg.widthMeters / 4);
+      const exitLocalX = getPixelRadius(centerLatLng, exitOffsetMeters) * Math.sign(exitOffsetMeters);
 
-      if (progress < 1) {
-        const entryLenPx = getPixelRadius(centerLatLng, entryLeg.lengthMeters || 120);
-        const dist = entryLenPx * (1 - progress) + outerPx;
-        const rad = (entryAngleDeg * Math.PI) / 180;
-        const entryOffsetMeters = appState.trafficStandard === 'RHT' ? -(entryLeg.widthMeters / 4) : (entryLeg.widthMeters / 4);
-        const localXPx = getPixelRadius(centerLatLng, entryOffsetMeters) * Math.sign(entryOffsetMeters);
+      const straightSpan = 1 - CONNECTOR_SPAN;
+      const entryLenPx = getPixelRadius(centerLatLng, entryLeg.lengthMeters || 120);
+      const exitLenPx = getPixelRadius(centerLatLng, exitLeg.lengthMeters || 120);
+      // How far back along the leg the turn-in starts. The gap between the circle
+      // edge and the ring lane alone is far too short to swing ~90 degrees through,
+      // so the curve reaches back up the approach for room.
+      const entryTurnInPx = Math.min(CONNECTOR_SPAN * entryLenPx, 0.5 * outerPx);
+      const exitTurnOutPx = Math.min(CONNECTOR_SPAN * exitLenPx, 0.5 * outerPx);
 
-        let effLocalX = localXPx;
-        if (progress > 0.7) {
-          const curveBlend = (progress - 0.7) / 0.3;
-          effLocalX = localXPx * (1 - curveBlend) + (appState.trafficStandard === 'RHT' ? -targetRadius * 0.2 : targetRadius * 0.2) * curveBlend;
-        }
+      // Trim the circulating arc so it begins and ends abeam the approach lane rather
+      // than on the leg's centre axis. Without this the joint sits on the wrong side of
+      // the lane the car occupies, and the turn-in has to swing back against its own
+      // exit tangent — a visible hairpin. Trimmed angles are local to rendering; the
+      // untrimmed getRingArc values stay authoritative for the yielding logic.
+      let entryTrim = Math.asin(Math.min(1, Math.abs(entryLocalX) / outerLaneRadius)) + TURN_TRIM_RAD;
+      let exitTrim = Math.asin(Math.min(1, Math.abs(exitLocalX) / outerLaneRadius)) + TURN_TRIM_RAD;
+      const trimBudget = 0.8 * Math.abs(arc.sweep);
+      if (entryTrim + exitTrim > trimBudget) {
+        const shrink = trimBudget / (entryTrim + exitTrim);
+        entryTrim *= shrink;
+        exitTrim *= shrink;
+      }
+      const ringStartAngle = arc.startAngle + sweepSign * entryTrim;
+      const ringEndAngle = arc.endAngle - sweepSign * exitTrim;
+      const ringSweep = ringEndAngle - ringStartAngle;
 
-        const localYPx = -dist;
-        posX = centerPx.x + effLocalX * Math.cos(rad) - localYPx * Math.sin(rad);
-        posY = centerPx.y + effLocalX * Math.sin(rad) + localYPx * Math.cos(rad);
+      if (progress < straightSpan) {
+        const dist = outerPx + entryTurnInPx + (entryLenPx - entryTurnInPx) * (1 - progress / straightSpan);
+        return legLocalToWorld(centerPx, entryRad, entryLocalX, -dist);
 
-      } else if (progress >= 1 && progress < 2) {
+      } else if (progress < 1) {
+        // Curve from the give-way line on the approach lane into the ring lane,
+        // matching the ring's tangent there so heading stays continuous.
+        const p0 = legLocalToWorld(centerPx, entryRad, entryLocalX, -(outerPx + entryTurnInPx));
+        const p1 = {
+          x: centerPx.x + Math.cos(ringStartAngle) * outerLaneRadius,
+          y: centerPx.y + Math.sin(ringStartAngle) * outerLaneRadius
+        };
+        const scale = 1.2 * Math.hypot(p1.x - p0.x, p1.y - p0.y);
+        const t0 = { x: -Math.sin(entryRad) * scale, y: Math.cos(entryRad) * scale };
+        const t1 = { x: -Math.sin(ringStartAngle) * sweepSign * scale, y: Math.cos(ringStartAngle) * sweepSign * scale };
+        return hermite(p0, t0, p1, t1, (progress - straightSpan) / CONNECTOR_SPAN);
+
+      } else if (progress < 2) {
         const ringProgress = progress - 1;
-        const currentArcAngle = arc.startAngle + arc.sweep * ringProgress;
+        const currentArcAngle = ringStartAngle + ringSweep * ringProgress;
 
         let currentRadius = targetRadius;
-        if (ringProgress < 0.3) {
-          const t = ringProgress / 0.3;
-          const easeT = t * t * (3 - 2 * t);
+        if (ringProgress < RING_LANE_EASE_SPAN) {
+          const easeT = smoothstep(ringProgress / RING_LANE_EASE_SPAN);
           currentRadius = outerLaneRadius * (1 - easeT) + targetRadius * easeT;
-        } else if (ringProgress > 0.7) {
-          const t = (ringProgress - 0.7) / 0.3;
-          const easeT = t * t * (3 - 2 * t);
+        } else if (ringProgress > 1 - RING_LANE_EASE_SPAN) {
+          const easeT = smoothstep((ringProgress - (1 - RING_LANE_EASE_SPAN)) / RING_LANE_EASE_SPAN);
           currentRadius = targetRadius * (1 - easeT) + outerLaneRadius * easeT;
         }
 
-        posX = centerPx.x + Math.cos(currentArcAngle) * currentRadius;
-        posY = centerPx.y + Math.sin(currentArcAngle) * currentRadius;
+        return {
+          x: centerPx.x + Math.cos(currentArcAngle) * currentRadius,
+          y: centerPx.y + Math.sin(currentArcAngle) * currentRadius
+        };
+
+      } else if (progress < 2 + CONNECTOR_SPAN) {
+        const p0 = {
+          x: centerPx.x + Math.cos(ringEndAngle) * outerLaneRadius,
+          y: centerPx.y + Math.sin(ringEndAngle) * outerLaneRadius
+        };
+        const p1 = legLocalToWorld(centerPx, exitRad, exitLocalX, -(outerPx + exitTurnOutPx));
+        const scale = 1.2 * Math.hypot(p1.x - p0.x, p1.y - p0.y);
+        const t0 = { x: -Math.sin(ringEndAngle) * sweepSign * scale, y: Math.cos(ringEndAngle) * sweepSign * scale };
+        const t1 = { x: Math.sin(exitRad) * scale, y: -Math.cos(exitRad) * scale };
+        return hermite(p0, t0, p1, t1, (progress - 2) / CONNECTOR_SPAN);
 
       } else {
-        const exitProgress = progress - 2;
-        const exitLenPx = getPixelRadius(centerLatLng, exitLeg.lengthMeters || 120);
-        const dist = outerPx + exitLenPx * exitProgress;
-        const rad = (exitAngleDeg * Math.PI) / 180;
-        const exitOffsetMeters = appState.trafficStandard === 'RHT' ? (exitLeg.widthMeters / 4) : -(exitLeg.widthMeters / 4);
-        const localXPx = getPixelRadius(centerLatLng, exitOffsetMeters) * Math.sign(exitOffsetMeters);
-
-        let effLocalX = localXPx;
-        if (exitProgress < 0.2) {
-          const curveBlend = exitProgress / 0.2;
-          effLocalX = (appState.trafficStandard === 'RHT' ? outerLaneRadius * 0.2 : -outerLaneRadius * 0.2) * (1 - curveBlend) + localXPx * curveBlend;
-        }
-
-        const localYPx = -dist;
-        posX = centerPx.x + effLocalX * Math.cos(rad) - localYPx * Math.sin(rad);
-        posY = centerPx.y + effLocalX * Math.sin(rad) + localYPx * Math.cos(rad);
+        const dist = outerPx + exitTurnOutPx
+          + (exitLenPx - exitTurnOutPx) * ((progress - 2 - CONNECTOR_SPAN) / straightSpan);
+        return legLocalToWorld(centerPx, exitRad, exitLocalX, -dist);
       }
-
-      return { x: posX, y: posY };
     }
 
     function updateSimulation(dt) {
@@ -2241,7 +2348,7 @@
         // queue or giving way is legitimate, however long it lasts.
         const creeping = (car.stoppedFor || 0) > CREEP_AFTER_S;
 
-        let targetSpeed = car.speed;
+        let targetSpeed = car.speed * turnSpeedFactor(car.progress);
         let mustStopForYield = false;
 
         // --- Give way at the entry: ring traffic has priority ---
@@ -2357,8 +2464,11 @@
           car.currentSpeed += (targetSpeed - car.currentSpeed) * Math.min(1, dt * 6);
         }
 
-        if (mustStopForYield && car.progress >= 0.95 && car.progress < 1.0) {
-          car.progress = 0.95;
+        // Hold at the yield line, which is where the straight leg ends and the
+        // curved connector into the ring begins.
+        const yieldLineProgress = 1 - CONNECTOR_SPAN;
+        if (mustStopForYield && car.progress >= yieldLineProgress && car.progress < 1.0) {
+          car.progress = yieldLineProgress;
           car.currentSpeed = 0;
         } else {
           // Constant real-world speed: convert m/s to a fraction of the current phase.
